@@ -1,0 +1,7 @@
+1. Split 16 bit unsigned int to 2 8 bit unsigned ints
+https://stackoverflow.com/questions/53367838/how-to-split-16-value-into-two-8-bit-values-in-c
+
+2. Merge 2 bytes (8 bit ints) to 1 16 bit int
+https://stackoverflow.com/questions/17071458/convert-2-bytes-into-an-integer
+
+
