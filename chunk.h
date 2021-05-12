@@ -20,6 +20,7 @@ typedef enum {
 typedef struct {
     int capacity;                               /* The capacity of the dynamic array */
     int elem_count;                             /* Number of elements in the dynamic array */
+    int ins_count;                              /* Number of instructions */
     uint8_t* code;                              /* 8-bit unsigned int dynamic array for storing opcodes */
     ValueArray constants;                       /* Constant pool */
     int* lines;                                 /* Stores lines for debugging */

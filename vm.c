@@ -4,6 +4,7 @@
 #include "debug.h"
 #include "value.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #define READ_BYTE(vmpointer) (*vmpointer->ip++)
@@ -11,7 +12,6 @@
 void initVM(VM* vm, Chunk* chunk) {
     vm->chunk = chunk;
     vm->ip = chunk->code;
-    vm->insInterpreted = 0;
     resetStack(vm);
 }
 
@@ -47,10 +47,6 @@ static Value read_long_constant(VM* vm) {
 
 static InterpretResult run(VM* vm) {
     for (;;) {
-        if (vm->insInterpreted >= vm->chunk->elem_count) {
-            return INTERPRET_YIELD;
-        }
-
         #ifdef DEBUG_TRACE_EXECUTION
             printf("          ");
             for (Value* slot = vm->stack; slot < vm->stackTop; slot++) {
@@ -62,13 +58,17 @@ static InterpretResult run(VM* vm) {
             dissembleInstruction(vm->chunk, (int)(vm->ip - vm->chunk->code));
             
         #endif
-        uint8_t ins = *vm->ip++;
-        vm->insInterpreted++;
+        uint8_t ins = *vm->ip++;        /* Points to instruction about to be executed and stores the current */
+
         switch (ins) {
             case OP_EOF: {
                 return INTERPRET_OK;
             }
             case OP_RET: {
+                /* Temporary Operation is to print the top of stack */
+                Value value = pop(vm);
+                printValue(value);
+                printf("\n");
                 break;
             }
             case OP_CONST: {
@@ -120,6 +120,11 @@ static InterpretResult run(VM* vm) {
                 push(vm, -pop(vm));
                 break;
             }
+            default:
+                printf("Unknown Instruction %ld\n", (long)ins);
+                printf("Next : %ld\n", (long)*vm->ip);
+                printf("Previous : %ld\n",(long)vm->ip[-2]);
+                break;
         }
     }
 }

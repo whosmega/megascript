@@ -56,7 +56,32 @@ ParseRule rules[] = {
    [TOKEN_MOD_EQUAL]      = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_PLUS_PLUS]      = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_MINUS_MINUS]    = {NULL, NULL, NULL, PREC_NONE},
-
+   [TOKEN_IDENTIFIER]     = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_STRING]         = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_NUMBER]         = {number, NULL, NULL, PREC_PRIMARY},
+   [TOKEN_OR]             = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_AND]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_WHILE]          = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_FOR]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_FALSE]          = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_TRUE]           = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_IF]             = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_ELSE]           = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_ELSEIF]         = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_CLASS]          = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_SUPER]          = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_SELF]           = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_INHERITS]       = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_FUNC]           = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_END]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_RETURN]         = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_VAR]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_NIL]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_IMPORTCLASS]    = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_RANGE]          = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_VAR_ARGS]       = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_EOF]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_ERROR]          = {NULL, NULL, NULL, PREC_NONE}
 };
 
 /* - - - - - - - - - - */
@@ -65,7 +90,7 @@ ParseRule rules[] = {
 static void errorAt(Parser* parser, Token* token, const char* message) {
     if (parser->panicMode == true) return;      /* Suppress */
     parser->panicMode = true;
-    fprintf(stderr, "Error on line %d : ", token->line);
+    fprintf(stderr, "Error on line %d : ", token->type == TOKEN_EOF ? 1 : token->line);
 
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, "At End");
@@ -93,7 +118,7 @@ static void advance(Scanner* scanner, Parser* parser) {
 
     for (;;) {
         parser->current = scanToken(scanner);
-        if (parser->current.type == TOKEN_ERROR) break;
+        if (parser->current.type != TOKEN_ERROR) break;
 
         errorAtCurrent(parser, parser->current.start);
     }
@@ -117,6 +142,7 @@ static void emitByte(Parser* parser, uint8_t byte) {
 }
 
 static void emitBytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
+    /* Meant for easy operand passing */
     emitByte(parser, byte1);
     emitByte(parser, byte2);
 }
@@ -128,14 +154,12 @@ static void endCompiler(Parser* parser) {
 static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precedence) {
     /* Parses given precedence and anything higher */ 
     advance(scanner, parser);
-    
     /* Prefix Expressions */
     ParseFn prefixRule = getRule(parser->previous.type)->prefix;
     if (prefixRule == NULL) {
         error(parser, "Expected an expression");
         return;
     }
-
     prefixRule(scanner, parser);
     
     /* Infix Expressions */
@@ -180,6 +204,7 @@ static void binary(Scanner* scanner, Parser* parser) {
         case TOKEN_MINUS: emitByte(parser, OP_SUB); break;
         case TOKEN_ASTERISK: emitByte(parser, OP_MUL); break;
         case TOKEN_SLASH: emitByte(parser, OP_DIV); break;
+        case TOKEN_EXP: emitByte(parser, OP_POW); break;
         default: return;
     }
 }
@@ -201,7 +226,7 @@ static void number(Scanner* scanner, Parser* parser) {
     int index = writeConstant(currentChunk(parser), value, parser->previous.line);
 
     if (index > CONSTANT_MAX) {
-        error(parser, "Too mant constants in a chunk");
+        error(parser, "Too many constants in a chunk");
     }
 }
 
@@ -214,10 +239,13 @@ InterpretResult compile(const char* source, Chunk* chunk) {
     parser.hadError = false;
     parser.panicMode = false;
     /*            */ 
-
+    parser.compilingChunk = chunk;
     advance(&scanner, &parser);
     expression(&scanner, &parser);
+    endCompiler(&parser);
+
     consume(&scanner, &parser, TOKEN_EOF, "Expected EOF");
+    emitByte(&parser, OP_EOF);
     /* 
     int line = -1;
     

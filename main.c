@@ -70,20 +70,12 @@ void runFile(const char* fileName) {
     cleanup(source, &chunk, &vm);
 
     if (result2 == INTERPRET_RUNTIME_ERROR) exit(101);
-    if (result2 == INTERPRET_YIELD) {
-        fprintf(stderr, "Source Corruption : EOF not found\n");
-        exit(102);
-    }
 }
 
 void repl() {
-    char buffer[1024];
     VM vm;
     Chunk chunk;
-    initChunk(&chunk);
-    
-    bool initializedVM = false;
-
+    char buffer[1024];
     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
     for (;;) {
@@ -94,32 +86,22 @@ void repl() {
         }
         
         if (memcmp(buffer, ".exit", 5) == 0) {
-            if (initializedVM) {
-                freeChunk(&chunk);
-                freeVM(&vm);
-            }
-            break;
-        }
-        InterpretResult result1 = compile(buffer, &chunk);
-        if (result1 == INTERPRET_COMPILE_ERROR) {
             freeChunk(&chunk);
             freeVM(&vm);
-            exit(100);
+            exit(0);
         }
-        if (initializedVM == false) {
-            /* We initialize during runtime because the bytecode has to be loaded in first */
-            initVM(&vm, &chunk);
-            initializedVM = true;
+        initChunk(&chunk);
+        InterpretResult result1 = compile(buffer, &chunk);
+        initVM(&vm, &chunk);
+        if (result1 == INTERPRET_OK) { 
+            dissembleChunk(&chunk, "MAIN");
+            InterpretResult result2 = interpret(&vm);
+        } else {
+            dissembleChunk(&chunk, "MAIN [ERROR]");
         }
-        InterpretResult result = interpret(&vm);
-
-        if (result == INTERPRET_RUNTIME_ERROR) break;
-        if (result == INTERPRET_OK) break;
-        if (result == INTERPRET_YIELD) continue;
+        freeChunk(&chunk);
+        freeVM(&vm);
     }
-
-    freeChunk(&chunk);
-    freeVM(&vm);
 }
 
 int main(int argc, char* argv[]) {

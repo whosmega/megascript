@@ -47,6 +47,8 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     uint8_t instruction = chunk->code[offset];
 
     switch(instruction) {
+        case OP_EOF:
+            return simpleInstruction("OP_EOF", offset);
         case OP_RET:
             return simpleInstruction("OP_RET", offset);
         case OP_CONST:
