@@ -1,5 +1,5 @@
-#ifndef ls_common_h
-#define ls_common_h
+#ifndef ms_common_h
+#define ms_common_h
 
 #include <stdbool.h>
 #include <stddef.h>

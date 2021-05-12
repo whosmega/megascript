@@ -120,12 +120,6 @@ static InterpretResult run(VM* vm) {
                 push(vm, -pop(vm));
                 break;
             }
-            case OP_PRINT: {
-                Value constant = pop(vm);
-                printValue(constant);
-                printf("\n");
-                break;
-            }
         }
     }
 }

@@ -1,9 +1,44 @@
-#ifndef ls_compiler_h
-#define ls_compiler_h
+#ifndef ms_compiler_h
+#define ms_compiler_h
 #include <string.h>
 #include "vm.h"
 #include "chunk.h"
+#include "scanner.h"
 
-void compile(const char* source, Chunk* chunk); 
+typedef struct {
+    Token previous;
+    Token current;
+    Chunk* compilingChunk;
+    bool hadError;
+    bool panicMode;         /* When panic mode is set to true all 
+                             * further errors get suppressed */
+} Parser;
+
+typedef enum {
+    PREC_NONE,              // None 
+    PREC_ASSIGNMENT,        // =
+    PREC_OR,                // or
+    PREC_AND,               // and 
+    PREC_EQUALITY,          // == !=
+    PREC_COMPARISON,        // > < >= <=
+    PREC_TERM,              // + -
+    PREC_FACTOR,            // * /
+    PREC_EXP_MOD,           // ^ %
+    PREC_UNARY,             // - ++a --a a++ a-- 
+    PREC_CALL,              // . ()
+    PREC_PRIMARY            // 4 90.3
+} Precedence;
+
+typedef void (*ParseFn)(Scanner* scanner, Parser* parser);
+
+typedef struct {
+    ParseFn prefix;
+    ParseFn infix;
+    ParseFn postfix;
+    Precedence precedence;
+} ParseRule;
+
+
+InterpretResult compile(const char* source, Chunk* chunk); 
 
 #endif

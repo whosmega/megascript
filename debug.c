@@ -65,8 +65,6 @@ int dissembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_POW", offset);
         case OP_NEGATE:
             return simpleInstruction("OP_NEGATE", offset);
-        case OP_PRINT:
-            return simpleInstruction("OP_PRINT", offset);
         default:
             printf("Unknown opcode %d\n", instruction); 
             return offset + 1;

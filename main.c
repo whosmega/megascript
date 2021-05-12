@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define V_MAJOR 0
+#define V_MINOR 1
+
 char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
     
@@ -41,6 +44,12 @@ char* readFile(const char* path) {
     return buffer;
 }
 
+void cleanup(const char* source, Chunk* chunk, VM* vm) {
+    free((char*)source);
+    freeChunk(chunk);
+    freeVM(vm);
+}
+
 void runFile(const char* fileName) {
     char* source = readFile(fileName);
 
@@ -48,17 +57,20 @@ void runFile(const char* fileName) {
     Chunk chunk;
 
     initChunk(&chunk);
-    compile(source, &chunk);
+    InterpretResult result1 = compile(source, &chunk);
+    
+    if (result1 == INTERPRET_COMPILE_ERROR) {
+        cleanup(source, &chunk, &vm);
+        exit(100);
+    }
+
     initVM(&vm, &chunk);
 
-    InterpretResult result = interpret(&vm);
-    free(source);
-    freeChunk(&chunk);
-    freeVM(&vm);
+    InterpretResult result2 = interpret(&vm);
+    cleanup(source, &chunk, &vm);
 
-    if (result == INTERPRET_COMPILE_ERROR) exit(100);
-    if (result == INTERPRET_RUNTIME_ERROR) exit(101);
-    if (result == INTERPRET_YIELD) {
+    if (result2 == INTERPRET_RUNTIME_ERROR) exit(101);
+    if (result2 == INTERPRET_YIELD) {
         fprintf(stderr, "Source Corruption : EOF not found\n");
         exit(102);
     }
@@ -71,6 +83,9 @@ void repl() {
     initChunk(&chunk);
     
     bool initializedVM = false;
+
+    printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
+    printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
     for (;;) {
         printf("> ");
         if (!fgets(buffer, sizeof(buffer), stdin)) {
@@ -78,7 +93,19 @@ void repl() {
             break;
         }
         
-        compile(buffer, &chunk);
+        if (memcmp(buffer, ".exit", 5) == 0) {
+            if (initializedVM) {
+                freeChunk(&chunk);
+                freeVM(&vm);
+            }
+            break;
+        }
+        InterpretResult result1 = compile(buffer, &chunk);
+        if (result1 == INTERPRET_COMPILE_ERROR) {
+            freeChunk(&chunk);
+            freeVM(&vm);
+            exit(100);
+        }
         if (initializedVM == false) {
             /* We initialize during runtime because the bytecode has to be loaded in first */
             initVM(&vm, &chunk);
@@ -86,7 +113,6 @@ void repl() {
         }
         InterpretResult result = interpret(&vm);
 
-        if (result == INTERPRET_COMPILE_ERROR) break;
         if (result == INTERPRET_RUNTIME_ERROR) break;
         if (result == INTERPRET_OK) break;
         if (result == INTERPRET_YIELD) continue;

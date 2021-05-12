@@ -31,21 +31,23 @@ void freeChunk(Chunk* chunk) {
     initChunk(chunk);                                       /* Re-Initialize the chunk */
 }
 
-void writeConstant(Chunk* chunk, Value value, int line) {
+int writeConstant(Chunk* chunk, Value value, int line) {
     writeValueArray(&chunk->constants, value);  
     int index = chunk->constants.count - 1;
 
-    if (index <= 255) {
+    if (index <= (1 << 8) - 1) {
         /* if index fits in the 8-bit uint range then use normal loader */
         writeChunk(chunk, OP_CONST, line);
         writeChunk(chunk, index, line);
-    } else {
+    } else if (index <= CONSTANT_MAX - 1){
         /* Otherwise load the long constant bytecode */
         /* and split the 16 bit index into 2 8-bit values to write them */
         writeChunk(chunk, OP_CONST_LONG, line);
         writeChunk(chunk, (uint8_t)(((uint16_t)index >> 0) & 0xFF), line);
         writeChunk(chunk, (uint8_t)(((uint16_t)index >> 8) & 0XFF), line);
     }
+
+    return index;
 }
 
 

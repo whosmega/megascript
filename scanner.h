@@ -1,5 +1,5 @@
-#ifndef ls_scanner_h
-#define ls_scanner_h
+#ifndef ms_scanner_h
+#define ms_scanner_h
 
 typedef struct {
     int line;
@@ -11,7 +11,7 @@ typedef enum {
     TOKEN_PLUS, TOKEN_MINUS, TOKEN_ASTERISK, TOKEN_SLASH, TOKEN_EXP,                // [+, -, *, /, ^]  
     TOKEN_ROUND_OPEN, TOKEN_ROUND_CLOSE, TOKEN_SQUARE_OPEN, TOKEN_SQUARE_CLOSE,     // [(, ), [, ], {, }, ,, ;, :, ., ?]
     TOKEN_CURLY_OPEN, TOKEN_CURLY_CLOSE,
-    TOKEN_COMMA, TOKEN_SEMICOLON, TOKEN_COLON, TOKEN_DOT, TOKEN_QMARK,
+    TOKEN_COMMA, TOKEN_SEMICOLON, TOKEN_COLON, TOKEN_DOT,
 
     TOKEN_BANG, TOKEN_BANG_EQUAL,                                                   // [!, !=, =, ==, >, >=, <, <=, #, :=, ::=]
     TOKEN_EQUAL, TOKEN_EQUAL_EQUAL,
@@ -22,6 +22,7 @@ typedef enum {
     TOKEN_PLUS_EQUAL, TOKEN_MINUS_EQUAL,
     TOKEN_MUL_EQUAL, TOKEN_DIV_EQUAL,
     TOKEN_POW_EQUAL, TOKEN_MOD_EQUAL,
+    TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS,
 
     TOKEN_IDENTIFIER, TOKEN_STRING, TOKEN_NUMBER,                                   // [variablename, "hello", 121]
 

@@ -1,5 +1,5 @@
-#ifndef ls_debug_h
-#define ls_debug_h
+#ifndef ms_debug_h
+#define ms_debug_h
 #include "chunk.h"
 
 // #define DEBUG_TRACE_EXECUTION

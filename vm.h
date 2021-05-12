@@ -1,5 +1,5 @@
-#ifndef ls_vm_h
-#define ls_vm_h
+#ifndef ms_vm_h
+#define ms_vm_h
 #include "value.h"
 
 #include "chunk.h"

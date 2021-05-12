@@ -1,6 +1,7 @@
-#ifndef ls_memory_h
-#define ls_memory_h
+#ifndef ms_memory_h
+#define ms_memory_h
 
+#include "common.h"
 // Macros //
 
 #define THRESHOLD 8
