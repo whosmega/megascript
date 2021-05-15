@@ -1,6 +1,6 @@
-#include "value.h"
-#include "memory.h"
-
+#include "../includes/value.h"
+#include "../includes/memory.h"
+#include "../includes/object.h"
 
 void initValueArray(ValueArray* array) {
     array->capacity = 0;
@@ -27,5 +27,17 @@ void freeValueArray(ValueArray* array) {
 }
 
 void printValue(Value value) {
-    printf("%g", value);
+    switch (value.type) {
+        case VAL_NUMBER:
+            printf("%g", AS_NUMBER(value));
+            break;
+        case VAL_BOOL:
+            printf("%s", AS_BOOL(value) ? "true" : "false");
+            break;
+        case VAL_NIL:
+            printf("nil");
+            break;
+        case VAL_OBJ: printObject(value);
+        default: return;
+    }
 }

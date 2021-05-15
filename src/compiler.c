@@ -1,7 +1,10 @@
-#include "compiler.h"
-#include "chunk.h"
-#include "scanner.h"
-#include "vm.h"
+#include "../includes/compiler.h"
+#include "../includes/chunk.h"
+#include "../includes/scanner.h"
+#include "../includes/vm.h"
+#include "../includes/debug.h"
+#include "../includes/value.h"
+#include "../includes/object.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +16,10 @@ static void grouping(Scanner* scanner, Parser* parser);
 static void binary(Scanner* scanner, Parser* parser);
 static void unary(Scanner* scanner, Parser* parser);
 static void number(Scanner* scanner, Parser* parser);
+static void bool_true(Scanner* scanner, Parser* parser);
+static void bool_false(Scanner* scanner, Parser* parser);
+static void nil(Scanner* scanner, Parser* parser);
+static void string(Scanner* scanner, Parser* parser);
 
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precedence);
@@ -37,14 +44,14 @@ ParseRule rules[] = {
    [TOKEN_SEMICOLON]      = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_COLON]          = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_DOT]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_BANG]           = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_BANG_EQUAL]     = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_BANG]           = {unary, NULL, NULL, PREC_UNARY},
+   [TOKEN_BANG_EQUAL]     = {NULL, binary, NULL, PREC_EQUALITY},
    [TOKEN_EQUAL]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_EQUAL_EQUAL]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_GREATER]        = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_GREATER_EQUAL]  = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_LESS]           = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_LESS_EQUAL]     = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_EQUAL_EQUAL]    = {NULL, binary, NULL, PREC_EQUALITY},
+   [TOKEN_GREATER]        = {NULL, binary, NULL, PREC_COMPARISON},
+   [TOKEN_GREATER_EQUAL]  = {NULL, binary, NULL, PREC_COMPARISON},
+   [TOKEN_LESS]           = {NULL, binary, NULL, PREC_COMPARISON},
+   [TOKEN_LESS_EQUAL]     = {NULL, binary, NULL, PREC_COMPARISON},
    [TOKEN_CLASSTEMP_EQ]   = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_CLASSINHERIT_EQ]= {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_MOD]            = {NULL, NULL, NULL, PREC_NONE},
@@ -57,14 +64,14 @@ ParseRule rules[] = {
    [TOKEN_PLUS_PLUS]      = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_MINUS_MINUS]    = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_IDENTIFIER]     = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_STRING]         = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_STRING]         = {string, NULL, NULL, PREC_PRIMARY},
    [TOKEN_NUMBER]         = {number, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_OR]             = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_AND]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_OR]             = {NULL, binary, NULL, PREC_OR},
+   [TOKEN_AND]            = {NULL, binary, NULL, PREC_AND},
    [TOKEN_WHILE]          = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_FOR]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_FALSE]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_TRUE]           = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_FALSE]          = {bool_false, NULL, NULL, PREC_PRIMARY},
+   [TOKEN_TRUE]           = {bool_true, NULL, NULL, PREC_PRIMARY},
    [TOKEN_IF]             = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_ELSE]           = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_ELSEIF]         = {NULL, NULL, NULL, PREC_NONE},
@@ -76,7 +83,7 @@ ParseRule rules[] = {
    [TOKEN_END]            = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_RETURN]         = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_VAR]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_NIL]            = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_NIL]            = {nil, NULL, NULL, PREC_PRIMARY},
    [TOKEN_IMPORTCLASS]    = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_RANGE]          = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_VAR_ARGS]       = {NULL, NULL, NULL, PREC_NONE},
@@ -205,6 +212,14 @@ static void binary(Scanner* scanner, Parser* parser) {
         case TOKEN_ASTERISK: emitByte(parser, OP_MUL); break;
         case TOKEN_SLASH: emitByte(parser, OP_DIV); break;
         case TOKEN_EXP: emitByte(parser, OP_POW); break;
+        case TOKEN_EQUAL_EQUAL: emitByte(parser, OP_EQUAL); break;
+        case TOKEN_BANG_EQUAL: emitByte(parser, OP_NOT_EQ); break;
+        case TOKEN_AND: emitByte(parser, OP_AND); break;
+        case TOKEN_OR: emitByte(parser, OP_OR); break;
+        case TOKEN_GREATER: emitByte(parser, OP_GREATER); break;
+        case TOKEN_GREATER_EQUAL: emitByte(parser, OP_GREATER_EQ); break;
+        case TOKEN_LESS: emitByte(parser, OP_LESSER); break;
+        case TOKEN_LESS_EQUAL: emitByte(parser, OP_LESSER_EQ); break;
         default: return;
     }
 }
@@ -217,12 +232,34 @@ static void unary(Scanner* scanner, Parser* parser) {
 
     switch (operator) {
         case TOKEN_MINUS: emitByte(parser, OP_NEGATE); break;
+        case TOKEN_BANG: emitByte(parser, OP_NOT); break;
         default: return;        /* Unknown */
     }
 }
 
+static void bool_false(Scanner* scanner, Parser* parser) {
+    emitByte(parser, OP_FALSE);    
+}
+
+static void bool_true(Scanner* scanner, Parser* parser) {
+    emitByte(parser, OP_TRUE);
+}
+
+static void nil(Scanner* scanner, Parser* parser) {
+    emitByte(parser, OP_NIL);
+}
+
+static void string(Scanner* scanner, Parser* parser) {
+    int index = writeConstant(currentChunk(parser), OBJ(allocateString(parser->vm, parser->previous.start + 1, parser->previous.length - 2)), 
+                parser->previous.line);
+
+    if (index > CONSTANT_MAX) {
+        error(parser, "Too many constants in a chunk");
+    }
+}
+
 static void number(Scanner* scanner, Parser* parser) {
-    Value value = strtod(parser->previous.start, NULL);
+    Value value = NATIVE_TO_NUMBER(strtod(parser->previous.start, NULL));
     int index = writeConstant(currentChunk(parser), value, parser->previous.line);
 
     if (index > CONSTANT_MAX) {
@@ -230,7 +267,7 @@ static void number(Scanner* scanner, Parser* parser) {
     }
 }
 
-InterpretResult compile(const char* source, Chunk* chunk) {
+InterpretResult compile(const char* source, Chunk* chunk, VM* vm) {
     Scanner scanner;
     Parser parser;
     initScanner(&scanner, source);
@@ -238,6 +275,7 @@ InterpretResult compile(const char* source, Chunk* chunk) {
     /* Initialize */
     parser.hadError = false;
     parser.panicMode = false;
+    parser.vm = vm;
     /*            */ 
     parser.compilingChunk = chunk;
     advance(&scanner, &parser);
@@ -246,6 +284,13 @@ InterpretResult compile(const char* source, Chunk* chunk) {
 
     consume(&scanner, &parser, TOKEN_EOF, "Expected EOF");
     emitByte(&parser, OP_EOF);
+
+    #ifdef DEBUG_PRINT_BYTECODE
+    
+    if (!parser.hadError) {
+        dissembleChunk(chunk, "MAIN");
+    }
+    #endif
     /* 
     int line = -1;
     

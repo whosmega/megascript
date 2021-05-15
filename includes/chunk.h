@@ -1,7 +1,7 @@
 #ifndef ms_chunk_h
 #define ms_chunk_h
-#include "common.h"
-#include "value.h"
+#include "../includes/common.h"
+#include "../includes/value.h"
 
 typedef enum {
     OP_ADD,
@@ -10,7 +10,22 @@ typedef enum {
     OP_DIV,
     OP_POW,
     OP_NEGATE,
-        
+    OP_NOT,
+    OP_GREATER,
+    OP_GREATER_EQ,
+    OP_LESSER,
+    OP_LESSER_EQ,
+    OP_EQUAL,
+    OP_NOT_EQ,
+    OP_INCR_POST,
+    OP_INCR_PRE,
+    OP_DECR_POST,
+    OP_DECR_PRE,
+    OP_AND,
+    OP_OR,
+    OP_NIL,
+    OP_TRUE,
+    OP_FALSE,
     OP_RET,
     OP_CONST,
     OP_CONST_LONG,

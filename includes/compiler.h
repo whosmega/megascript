@@ -1,14 +1,15 @@
 #ifndef ms_compiler_h
 #define ms_compiler_h
 #include <string.h>
-#include "vm.h"
-#include "chunk.h"
-#include "scanner.h"
+#include "../includes/vm.h"
+#include "../includes/chunk.h"
+#include "../includes/scanner.h"
 
 typedef struct {
     Token previous;
     Token current;
     Chunk* compilingChunk;
+    VM* vm;
     bool hadError;
     bool panicMode;         /* When panic mode is set to true all 
                              * further errors get suppressed */
@@ -39,6 +40,6 @@ typedef struct {
 } ParseRule;
 
 
-InterpretResult compile(const char* source, Chunk* chunk); 
+InterpretResult compile(const char* source, Chunk* chunk, VM* vm); 
 
 #endif

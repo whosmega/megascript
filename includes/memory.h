@@ -1,7 +1,7 @@
 #ifndef ms_memory_h
 #define ms_memory_h
 
-#include "common.h"
+#include "../includes/common.h"
 // Macros //
 
 #define THRESHOLD 8
@@ -12,6 +12,9 @@
 (datatype*)reallocate(array, (oldS) * sizeof(datatype), (newS) * sizeof(datatype))
 
 #define FREE_ARRAY(datatype, array, oldS) reallocate(array, (oldS) * sizeof(datatype), 0)
+
+#define ALLOCATE(type, count) \
+    (type*)reallocate(NULL, 0, sizeof(type) * count)
 
 void* reallocate(void* array, size_t oldSize, size_t newSize);
 

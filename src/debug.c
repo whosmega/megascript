@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include "debug.h"
-#include "value.h"
+#include "../includes/debug.h"
+#include "../includes/value.h"
 
 void dissembleChunk(Chunk* chunk, const char* name) {
     printf("== %s ==\n", name);
@@ -52,21 +52,49 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_RET:
             return simpleInstruction("OP_RET", offset);
         case OP_CONST:
-            return constantInstruction("OP_CONST", chunk, offset);
+            return constantInstruction("CONST (emit)", chunk, offset);
         case OP_CONST_LONG:
-            return longConstantInstruction("OP_CONST_LONG", chunk, offset);
+            return longConstantInstruction("CONST_LONG (emit)", chunk, offset);
         case OP_ADD:
-            return simpleInstruction("OP_ADD", offset);
+            return simpleInstruction("ADD", offset);
         case OP_SUB:
-            return simpleInstruction("OP_SUB", offset);
+            return simpleInstruction("SUB", offset);
         case OP_MUL:
-            return simpleInstruction("OP_MUL", offset);
+            return simpleInstruction("MUL", offset);
         case OP_DIV:
-            return simpleInstruction("OP_DIV", offset);
+            return simpleInstruction("DIV", offset);
         case OP_POW:
-            return simpleInstruction("OP_POW", offset);
+            return simpleInstruction("POW", offset);
         case OP_NEGATE:
-            return simpleInstruction("OP_NEGATE", offset);
+            return simpleInstruction("NEGATE", offset);
+        case OP_TRUE:
+            return simpleInstruction("TRUE (emit)", offset);
+        case OP_FALSE:
+            return simpleInstruction("FALSE (emit)", offset);
+        case OP_NIL:
+            return simpleInstruction("NIL", offset);
+        case OP_INCR_POST:
+            return simpleInstruction("INCR_POST", offset);
+        case OP_INCR_PRE:
+            return simpleInstruction("INCR_PRE", offset);
+        case OP_DECR_POST:
+            return simpleInstruction("DECR_POST", offset);
+        case OP_DECR_PRE:
+            return simpleInstruction("DECR_PRE", offset);
+        case OP_GREATER:
+            return simpleInstruction("GREATER", offset);
+        case OP_LESSER:
+            return simpleInstruction("LESSER", offset);
+        case OP_GREATER_EQ:
+            return simpleInstruction("GREATER_EQ", offset);
+        case OP_LESSER_EQ:
+            return simpleInstruction("LESSER_EQ", offset);
+        case OP_NOT_EQ:
+            return simpleInstruction("NOT_EQ", offset);
+        case OP_NOT:
+            return simpleInstruction("NOT", offset);
+        case OP_EQUAL:
+            return simpleInstruction("EQUAL", offset);
         default:
             printf("Unknown opcode %d\n", instruction); 
             return offset + 1;

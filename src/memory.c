@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include "memory.h"
+#include "../includes/memory.h"
 
 void* reallocate(void* array, size_t oldSize, size_t newSize) {
     if (newSize == 0) {

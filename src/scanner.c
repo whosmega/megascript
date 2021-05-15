@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include "common.h"
-#include "scanner.h"
+#include "../includes/common.h"
+#include "../includes/scanner.h"
 #include <string.h>
 
 void initScanner(Scanner* scanner, const char* source) {
@@ -258,6 +258,12 @@ Token scanToken(Scanner* scanner) {
         );
         case '=': return makeToken(scanner,
             match(scanner, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL
+        );
+        case '>': return makeToken(scanner,
+            match(scanner, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER
+        );
+        case '<': return makeToken(scanner, 
+            match(scanner, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS
         );
         case ':': {
             if (match(scanner, '=')) {

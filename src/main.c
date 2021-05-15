@@ -1,8 +1,8 @@
-#include "common.h"
-#include "chunk.h"
-#include "debug.h"
-#include "vm.h"
-#include "compiler.h"
+#include "../includes/common.h"
+#include "../includes/chunk.h"
+#include "../includes/debug.h"
+#include "../includes/vm.h"
+#include "../includes/compiler.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -57,14 +57,15 @@ void runFile(const char* fileName) {
     Chunk chunk;
 
     initChunk(&chunk);
-    InterpretResult result1 = compile(source, &chunk);
+    initVM(&vm);
+    InterpretResult result1 = compile(source, &chunk, &vm);
     
     if (result1 == INTERPRET_COMPILE_ERROR) {
         cleanup(source, &chunk, &vm);
         exit(100);
     }
 
-    initVM(&vm, &chunk);
+    loadChunk(&vm, &chunk);
 
     InterpretResult result2 = interpret(&vm);
     cleanup(source, &chunk, &vm);
@@ -76,6 +77,8 @@ void repl() {
     VM vm;
     Chunk chunk;
     char buffer[1024];
+    bool ran = false;
+    initVM(&vm);
     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
     for (;;) {
@@ -86,18 +89,18 @@ void repl() {
         }
         
         if (memcmp(buffer, ".exit", 5) == 0) {
-            freeChunk(&chunk);
-            freeVM(&vm);
+            if (ran) {
+                freeChunk(&chunk);
+                freeVM(&vm);
+            }
             exit(0);
         }
         initChunk(&chunk);
-        InterpretResult result1 = compile(buffer, &chunk);
-        initVM(&vm, &chunk);
+        ran = true;
+        InterpretResult result1 = compile(buffer, &chunk, &vm);
+        loadChunk(&vm, &chunk);
         if (result1 == INTERPRET_OK) { 
-            dissembleChunk(&chunk, "MAIN");
             InterpretResult result2 = interpret(&vm);
-        } else {
-            dissembleChunk(&chunk, "MAIN [ERROR]");
         }
         freeChunk(&chunk);
         freeVM(&vm);
