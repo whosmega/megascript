@@ -3,6 +3,7 @@
 #include "../includes/debug.h"
 #include "../includes/vm.h"
 #include "../includes/compiler.h"
+#include "../includes/table.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -79,8 +80,9 @@ void repl() {
     char buffer[1024];
     bool ran = false;
     initVM(&vm);
-    printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
-    printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
+//     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
+//     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
+
     for (;;) {
         printf("> ");
         if (!fgets(buffer, sizeof(buffer), stdin)) {

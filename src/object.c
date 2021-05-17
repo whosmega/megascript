@@ -1,9 +1,11 @@
 #include "../includes/common.h"
+#include <stdint.h>
 #include <string.h>
 #include "../includes/memory.h"
 #include "../includes/object.h"
 #include "../includes/value.h"
 #include "../includes/vm.h"
+#include "../includes/table.h"
 
 /*
     allocateObject allocates the given size which can be the size of any of its subsidaries (ObjString, ect) 
@@ -30,23 +32,54 @@ ObjString* allocateRawString(VM* vm, int length) {
     ObjString* stringObj = (ObjString*)allocateObject(vm, sizeof(*stringObj) + sizeof(char) * (length + 1), OBJ_STRING);
     stringObj->length = length;
     stringObj->allocated[length] = '\0';                /* Handles null byte */
-    stringObj->chars = &stringObj->allocated[0];
     return stringObj;
 }
 
 /*
     allocateString lets allocateRawString create an ObjectString template, and then it fills up the characters 
     for use
+
+    default behaviour is to copy the string given to it, and allocate it inside the ObjString
+    Used by the compiler to allocate the string while compiling which belongs to the source and cannot be freed
 */
 
+static inline ObjString* strIntern(VM* vm, char* chars, uint32_t hash, int length) {
+    return findStringTable(&vm->strings, chars, length, hash);
+}
+
 ObjString* allocateString(VM* vm, const char* chars, int length) {
+    uint32_t hash = hash_string(chars, length);
+    ObjString* interned = strIntern(vm, (char*)chars, hash, length);
+    if (interned != NULL) {
+        return interned; 
+    }
     ObjString* stringObj = allocateRawString(vm, length);       /* Make room for the null byte */
     memcpy(stringObj->allocated, chars, length);
+    stringObj->obj.hash = hash;
+    insertTable(&vm->strings, stringObj, NIL());
+    return stringObj;
+}
+
+/*
+ * Used to allocate strings at runtime which dont have a source
+ * Doesn't expect a null terminated string
+*/
+
+ObjString* allocateUnsourcedString(VM* vm, const char* chars, int length) {
+    ObjString* stringObj = allocateString(vm, chars, length);
+    FREE_ARRAY(char, (char*)chars, length);
     return stringObj;
 }
 
 /* 
     utility function to concatenate 2 string values 
+
+    This functions allocates a larger block on the heap which has spae
+    for both the strings combined, null terminator isnt neccessary.
+    The characters are then copied from the strings to the block. 
+    Then the control is passed to allocateUnsourcedString, which manages string interning 
+    and returns the allocated ObjString whilst freeing the character block 
+    previously allocated 
 */
 
 ObjString* strConcat(VM* vm, Value val1, Value val2) {
@@ -54,12 +87,13 @@ ObjString* strConcat(VM* vm, Value val1, Value val2) {
     ObjString* str2 = AS_STRING(val2);
 
     int length = str1->length + str2->length;
-    ObjString* conc = allocateRawString(vm, length);
-
-    memcpy(conc->allocated, str1->chars, str1->length);
-    memcpy(conc->allocated + str1->length, str2->chars, str2->length);
     
-    return conc;
+    char* chars = ALLOCATE(char, length);
+
+    memcpy(chars, &str1->allocated, str1->length);
+    memcpy(chars + str1->length, &str2->allocated, str2->length);
+
+    return allocateUnsourcedString(vm, chars, length);
 }
 
 void printObject(Value value) {
@@ -77,7 +111,6 @@ static void freeObject(Obj* obj) {
             /* Character array will automatically be freed because its 
              * allocated inside the struct due to being a flexible member */
             ObjString* stringObj = (ObjString*)obj;
-            stringObj->chars = NULL;
             reallocate(stringObj, sizeof(*stringObj), 0);
             break;
         }

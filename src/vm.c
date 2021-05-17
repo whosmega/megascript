@@ -4,6 +4,7 @@
 #include "../includes/debug.h"
 #include "../includes/object.h"
 #include "../includes/value.h"
+#include "../includes/table.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -18,6 +19,7 @@
 
 void initVM(VM* vm) {
     vm->ObjHead = NULL;
+    initTable(&vm->strings);
     resetStack(vm);
 }
 
@@ -27,7 +29,8 @@ void loadChunk(VM* vm, Chunk* chunk) {
 }
 
 void freeVM(VM* vm) {
-    freeObjects(vm); 
+    freeObjects(vm);
+    freeTable(&vm->strings);
 }
 
 void resetStack(VM* vm) {
@@ -66,17 +69,6 @@ static inline bool isFalsey(Value value) {
     return CHECK_NIL(value) || (CHECK_BOOLEAN(value) && !AS_BOOL(value));
 }
 
-static bool isEqualObj(Value val1, Value val2) {
-    switch (AS_OBJ(val1)->type) {
-        case OBJ_STRING: {
-            ObjString* obj1 = AS_STRING(val1);
-            ObjString* obj2 = AS_STRING(val2);
-            return obj1->length == obj2->length && (memcmp(obj1->chars, obj2->chars, obj1->length) == 0);
-        }
-        default: return false;
-    }
-}
-
 static bool isEqual(Value value1, Value value2) {
     if (value1.type != value2.type) return false;
 
@@ -84,7 +76,7 @@ static bool isEqual(Value value1, Value value2) {
         case VAL_NUMBER: return AS_NUMBER(value1) == AS_NUMBER(value2);
         case VAL_BOOL: return AS_BOOL(value1) == AS_BOOL(value2);
         case VAL_NIL: return true;
-        case VAL_OBJ: return isEqualObj(value1, value2);
+        case VAL_OBJ: return AS_OBJ(value1) == AS_OBJ(value2);
         default: return false;
     }
 }
@@ -186,7 +178,9 @@ static InterpretResult run(VM* vm) {
                     Value operand2 = pop(vm);
                     push(vm, NATIVE_TO_NUMBER(AS_NUMBER(operand2) / AS_NUMBER(operand1)));
                 } else {
-                    /* Runtime Error */
+                    /* Runtions are written so informally
+[20:33]
+i really like how they have somme Error */
                     runtimeError(vm, "Expected Numeric Operand to '/'");
                     return INTERPRET_RUNTIME_ERROR;
                 }

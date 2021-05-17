@@ -71,6 +71,10 @@ int dissembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("TRUE (emit)", offset);
         case OP_FALSE:
             return simpleInstruction("FALSE (emit)", offset);
+        case OP_AND:
+            return simpleInstruction("AND", offset);
+        case OP_OR:
+            return simpleInstruction("OR", offset);
         case OP_NIL:
             return simpleInstruction("NIL", offset);
         case OP_INCR_POST:
