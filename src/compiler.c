@@ -11,6 +11,10 @@
 
 /* Forward Declaration */
 
+static void globalDeclaration(Scanner* scanner, Parser* parser); 
+static void assignment(Scanner* scanner, Parser* parser);
+static void statement(Scanner* scanner, Parser* parser);
+static void exprStatement(Scanner* scanner, Parser* parser);
 static void expression(Scanner* scanner, Parser* parser);
 static void grouping(Scanner* scanner, Parser* parser);
 static void binary(Scanner* scanner, Parser* parser);
@@ -82,6 +86,7 @@ ParseRule rules[] = {
    [TOKEN_FUNC]           = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_END]            = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_RETURN]         = {NULL, NULL, NULL, PREC_NONE},
+   [TOKEN_GLOBAL]         = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_VAR]            = {NULL, NULL, NULL, PREC_NONE},
    [TOKEN_NIL]            = {nil, NULL, NULL, PREC_PRIMARY},
    [TOKEN_IMPORTCLASS]    = {NULL, NULL, NULL, PREC_NONE},
@@ -119,7 +124,6 @@ static void error(Parser* parser, const char* message) {
     errorAt(parser, &parser->previous, message);
 }
 
-
 static void advance(Scanner* scanner, Parser* parser) {
     parser->previous = parser->current;
 
@@ -129,6 +133,12 @@ static void advance(Scanner* scanner, Parser* parser) {
 
         errorAtCurrent(parser, parser->current.start);
     }
+}
+
+static bool match(Scanner* scanner, Parser* parser, TokenType type) {
+    if (parser->current.type != type) return false;
+    advance(scanner, parser);
+    return true;
 }
 
 static void consume(Scanner* scanner, Parser* parser, TokenType type, const char* message) {
@@ -154,10 +164,6 @@ static void emitBytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
     emitByte(parser, byte2);
 }
 
-static void endCompiler(Parser* parser) {
-    emitByte(parser, OP_RET);
-}
-
 static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precedence) {
     /* Parses given precedence and anything higher */ 
     advance(scanner, parser);
@@ -180,6 +186,7 @@ static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precede
              * Handle the error here
              */
             error(parser, "Expected an expression");
+            
             return;
         }
 
@@ -191,7 +198,35 @@ static ParseRule* getRule(TokenType type) {
     return &rules[type];
 }
 
+static void synchronize(Scanner* scanner, Parser* parser) {
+    parser->panicMode = false;
+
+    while (parser->current.type != TOKEN_EOF) {
+        if (parser->previous.type == TOKEN_SEMICOLON) return;
+        switch (parser->current.type) {
+            case TOKEN_CLASS:
+            case TOKEN_FUNC:
+            case TOKEN_VAR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_FOR:
+            case TOKEN_RETURN:
+                return;
+            
+            default:
+                continue;
+        }
+
+        advance(scanner, parser);
+    }
+}
+
 static void expression(Scanner* scanner, Parser* parser) {
+    parsePrecedence(scanner, parser, PREC_OR);
+}
+
+static void assignment(Scanner* scanner, Parser* parser) {
+    /* Envelops expression() */
     parsePrecedence(scanner, parser, PREC_ASSIGNMENT);
 }
 
@@ -267,6 +302,49 @@ static void number(Scanner* scanner, Parser* parser) {
     }
 }
 
+static void exprStatement(Scanner* scanner, Parser* parser) {
+     assignment(scanner, parser);
+     // Debug (replace OP_RET with OP_POP) 
+     emitByte(parser, OP_RET);
+     match(scanner, parser, TOKEN_SEMICOLON);
+}
+
+static int parseIdentifier(Scanner* scanner, Parser* parser) {
+    Value value = OBJ(allocateString(parser->vm, parser->previous.start, parser->previous.length));
+    uint16_t index = (uint16_t)writeConstant(currentChunk(parser), value, parser->previous.line);
+
+    if (index > CONSTANT_MAX) {
+        error(parser, "Too many constants in a chunk");
+    }
+
+    return index;
+}
+
+static void globalDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier");
+    u_int16_t index = parseIdentifier(scanner, parser);
+    
+    if (parser->current.type == TOKEN_EQUAL) {
+        advance(scanner, parser);
+        expression(scanner, parser);
+    } else {
+        emitByte(parser, OP_NIL);
+    }
+
+    match(scanner, parser, TOKEN_SEMICOLON);
+}
+
+static void statement(Scanner* scanner, Parser* parser) {
+    switch (parser->current.type) {
+        case TOKEN_GLOBAL:
+            globalDeclaration(scanner, parser);
+        default:
+            exprStatement(scanner, parser);
+    }
+}
+
+
 InterpretResult compile(const char* source, Chunk* chunk, VM* vm) {
     Scanner scanner;
     Parser parser;
@@ -279,10 +357,13 @@ InterpretResult compile(const char* source, Chunk* chunk, VM* vm) {
     /*            */ 
     parser.compilingChunk = chunk;
     advance(&scanner, &parser);
-    expression(&scanner, &parser);
-    endCompiler(&parser);
 
-    consume(&scanner, &parser, TOKEN_EOF, "Expected EOF");
+    while (!match(&scanner, &parser, TOKEN_EOF)) {
+        statement(&scanner, &parser);
+
+        synchronize(&scanner, &parser);
+    }
+
     emitByte(&parser, OP_EOF);
 
     #ifdef DEBUG_PRINT_BYTECODE

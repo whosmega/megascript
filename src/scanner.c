@@ -204,6 +204,7 @@ static Token scanIdentifier(Scanner* scanner) {
         case 'v': type = checkKeyword(scanner, 1, 2, "ar", TOKEN_VAR); break;
         case 'r': type = checkKeyword(scanner, 1, 5, "eturn", TOKEN_RETURN); break;
         case 'n': type = checkKeyword(scanner, 1, 2, "il", TOKEN_NIL); break;
+        case 'g': type = checkKeyword(scanner, 1, 5, "lobal", TOKEN_GLOBAL); break;
    }
 
    return makeToken(scanner, type);

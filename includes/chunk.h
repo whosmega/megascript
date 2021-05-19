@@ -29,6 +29,7 @@ typedef enum {
     OP_RET,
     OP_CONST,
     OP_CONST_LONG,
+    OP_POP,
     OP_EOF
 } OPCODE;                                       /* Enum which defines opcodes */
 

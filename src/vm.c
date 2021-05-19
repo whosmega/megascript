@@ -126,6 +126,7 @@ static InterpretResult run(VM* vm) {
                 printf("\n");
                 break;
             }
+            case OP_POP: pop(vm); break;
             case OP_CONST: {
                 Value constant = READ_CONSTANT(vm);
                 push(vm, constant);
@@ -144,7 +145,7 @@ static InterpretResult run(VM* vm) {
                     push(vm, OBJ(strConcat(vm, pop(vm), pop(vm))));
                 } else {
                     /* Runtime Error */
-                    runtimeError(vm, "Expected Numeric or String Operand to '+'");
+                    runtimeError(vm, "Error : Expected Numeric or String Operand to '+'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -156,7 +157,7 @@ static InterpretResult run(VM* vm) {
                     push(vm, NATIVE_TO_NUMBER(AS_NUMBER(operand2) - AS_NUMBER(operand1)));
                 } else {
                     /* Runtime Error */
-                    runtimeError(vm, "Expected Numeric Operand to '-'");
+                    runtimeError(vm, "Error : Expected Numeric Operand to '-'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -167,7 +168,7 @@ static InterpretResult run(VM* vm) {
                     push(vm, NATIVE_TO_NUMBER(AS_NUMBER(pop(vm)) * AS_NUMBER(pop(vm))));
                 } else {
                     /* Runtime Error */
-                    runtimeError(vm, "Expected Numeric Operand to '*'");
+                    runtimeError(vm, "Error : Expected Numeric Operand to '*'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -176,12 +177,16 @@ static InterpretResult run(VM* vm) {
                 if (CHECK_NUMBER(peek(vm, 0)) && CHECK_NUMBER(peek(vm, 1))) {
                     Value operand1 = pop(vm);
                     Value operand2 = pop(vm);
-                    push(vm, NATIVE_TO_NUMBER(AS_NUMBER(operand2) / AS_NUMBER(operand1)));
+
+                    double op1 = AS_NUMBER(operand1);
+                    if (op1 == 0l) {
+                        runtimeError(vm, "Error : Division By 0");
+                        return INTERPRET_RUNTIME_ERROR;
+                    }
+                    push(vm, NATIVE_TO_NUMBER(AS_NUMBER(operand2) / op1));
                 } else {
-                    /* Runtions are written so informally
-[20:33]
-i really like how they have somme Error */
-                    runtimeError(vm, "Expected Numeric Operand to '/'");
+                    
+                    runtimeError(vm, "Error : Expected Numeric Operand to '/'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -193,7 +198,7 @@ i really like how they have somme Error */
                     push(vm, NATIVE_TO_NUMBER(pow(AS_NUMBER(operand2), AS_NUMBER(operand1))));
                 } else {
                     /* Runtime Error */
-                    runtimeError(vm, "Expected Numeric Operand to '^'");
+                    runtimeError(vm, "Error : Expected Numeric Operand to '^'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -203,7 +208,7 @@ i really like how they have somme Error */
                     push(vm, NATIVE_TO_NUMBER(-AS_NUMBER(pop(vm))));
                 } else {
                     /* Runtime Error */
-                    runtimeError(vm, "Expected Numeric Operand to unary negation");
+                    runtimeError(vm, "Error : Expected Numeric Operand to unary negation");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
@@ -266,7 +271,7 @@ i really like how they have somme Error */
                 Value operand2 = pop(vm);
 
                 if (!CHECK_NUMBER(operand2) || !CHECK_NUMBER(operand1)) {
-                    runtimeError(vm, "Expected Numeric Operand To '>'");
+                    runtimeError(vm, "Error : Expected Numeric Operand To '>'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -278,7 +283,7 @@ i really like how they have somme Error */
                 Value operand2 = pop(vm);
 
                 if (!CHECK_NUMBER(operand2) || !CHECK_NUMBER(operand1)) {
-                    runtimeError(vm, "Expected Numeric Operand To '>='");
+                    runtimeError(vm, "Error : Expected Numeric Operand To '>='");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -290,7 +295,7 @@ i really like how they have somme Error */
                 Value operand2 = pop(vm);
 
                 if (!CHECK_NUMBER(operand2) || !CHECK_NUMBER(operand1)) {
-                    runtimeError(vm, "Expected Numeric Operand To '<'");
+                    runtimeError(vm, "Error : Expected Numeric Operand To '<'");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
@@ -302,7 +307,7 @@ i really like how they have somme Error */
                 Value operand2 = pop(vm);
 
                 if (!CHECK_NUMBER(operand2) || !CHECK_NUMBER(operand1)) {
-                    runtimeError(vm, "Expected Numeric Operand To '<='");
+                    runtimeError(vm, "Error : Expected Numeric Operand To '<='");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
