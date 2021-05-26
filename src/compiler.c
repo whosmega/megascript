@@ -5,104 +5,96 @@
 #include "../includes/debug.h"
 #include "../includes/value.h"
 #include "../includes/object.h"
+#include "../includes/memory.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Forward Declaration */
-
-static void globalDeclaration(Scanner* scanner, Parser* parser); 
-static void assignment(Scanner* scanner, Parser* parser);
+static void assignmentStatement(Scanner* scanner, Parser* parser);
+static void callStatement(Scanner* scanner, Parser* parser);
 static void statement(Scanner* scanner, Parser* parser);
-static void exprStatement(Scanner* scanner, Parser* parser);
 static void expression(Scanner* scanner, Parser* parser);
-static void grouping(Scanner* scanner, Parser* parser);
-static void binary(Scanner* scanner, Parser* parser);
+static void equality(Scanner* scanner, Parser* parser);
+static void comparison(Scanner* scanner, Parser* parser);
+static void term(Scanner* scanner, Parser* parser);
+static void factor(Scanner* scanner, Parser* parser);
+static void highestBinary(Scanner* scanner, Parser* parser);
 static void unary(Scanner* scanner, Parser* parser);
-static void number(Scanner* scanner, Parser* parser);
-static void bool_true(Scanner* scanner, Parser* parser);
-static void bool_false(Scanner* scanner, Parser* parser);
-static void nil(Scanner* scanner, Parser* parser);
-static void string(Scanner* scanner, Parser* parser);
+static void call(Scanner* scanner, Parser* parser);
+static void primary(Scanner* scanner, Parser* parser);
 
-static ParseRule* getRule(TokenType type);
-static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precedence);
+/* Helper functions */ 
+static bool checkPrimary(Scanner* scanner, Parser* parser);
+static void parseNumber(Scanner* scanner, Parser* parser);
+static void parseString(Scanner* scanner, Parser* parser);
+static void parseBoolean(Scanner* scanner, Parser* parser, bool value);
+static void parseNil(Scanner* scanner, Parser* parser);
+static void parseReadIdentifier(Scanner* scanner, Parser* parser);
+static void parseGrouping(Scanner* scanner, Parser* parser);
+static void parseGlobalDeclaration(Scanner* scanner, Parser* parser); 
+static void parseVariableDeclaration(Scanner* scanner, Parser* parser);
+static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, uint8_t longins);
+static void parseAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parsePlusAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parseMinusAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parseMulAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parseDivAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parsePowAssign(Scanner* scanner, Parser* parser, Token identifier);
+static void parseBlock(Scanner* scanner, Parser* parser);
+static void parseLocalDeclaration(Scanner* scanner, Parser* parser);
+static bool identifiersEqual(Token id1, Token id2);
+static int resolveLocal(Parser* parser, Token identifier);
+static void parsePrintStatement(Scanner* scanner, Parser* parser);
 
-/* - - - - - - - - - - */
+void initCompiler(Compiler* compiler) { 
+    compiler->localCount = 0;
+    compiler->scopeDepth = 0;
+}
 
-/*  Parse Rule Table   */ 
+void initParser(Parser* parser, Chunk* chunk, Compiler* compiler, VM* vm) {
+    parser->hadError = false;
+    parser->panicMode = false;
+    parser->vm = vm;
+    parser->compilingChunk = chunk;
+    parser->compiler = compiler;
+}
 
-ParseRule rules[] = {
-   [TOKEN_PLUS]           = {NULL, binary, NULL, PREC_TERM},
-   [TOKEN_MINUS]          = {unary, binary, NULL, PREC_TERM},
-   [TOKEN_ASTERISK]       = {NULL, binary, NULL, PREC_FACTOR},
-   [TOKEN_SLASH]          = {NULL, binary, NULL, PREC_FACTOR},
-   [TOKEN_EXP]            = {NULL, binary, NULL, PREC_EXP_MOD},
-   [TOKEN_ROUND_OPEN]     = {grouping, NULL, NULL, PREC_NONE},
-   [TOKEN_ROUND_CLOSE]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_SQUARE_OPEN]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_SQUARE_CLOSE]   = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_CURLY_OPEN]     = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_CURLY_CLOSE]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_COMMA]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_SEMICOLON]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_COLON]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_DOT]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_BANG]           = {unary, NULL, NULL, PREC_UNARY},
-   [TOKEN_BANG_EQUAL]     = {NULL, binary, NULL, PREC_EQUALITY},
-   [TOKEN_EQUAL]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_EQUAL_EQUAL]    = {NULL, binary, NULL, PREC_EQUALITY},
-   [TOKEN_GREATER]        = {NULL, binary, NULL, PREC_COMPARISON},
-   [TOKEN_GREATER_EQUAL]  = {NULL, binary, NULL, PREC_COMPARISON},
-   [TOKEN_LESS]           = {NULL, binary, NULL, PREC_COMPARISON},
-   [TOKEN_LESS_EQUAL]     = {NULL, binary, NULL, PREC_COMPARISON},
-   [TOKEN_CLASSTEMP_EQ]   = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_CLASSINHERIT_EQ]= {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_MOD]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_PLUS_EQUAL]     = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_MINUS_EQUAL]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_MUL_EQUAL]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_DIV_EQUAL]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_POW_EQUAL]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_MOD_EQUAL]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_PLUS_PLUS]      = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_MINUS_MINUS]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_IDENTIFIER]     = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_STRING]         = {string, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_NUMBER]         = {number, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_OR]             = {NULL, binary, NULL, PREC_OR},
-   [TOKEN_AND]            = {NULL, binary, NULL, PREC_AND},
-   [TOKEN_WHILE]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_FOR]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_FALSE]          = {bool_false, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_TRUE]           = {bool_true, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_IF]             = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_ELSE]           = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_ELSEIF]         = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_CLASS]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_SUPER]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_SELF]           = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_INHERITS]       = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_FUNC]           = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_END]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_RETURN]         = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_GLOBAL]         = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_VAR]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_NIL]            = {nil, NULL, NULL, PREC_PRIMARY},
-   [TOKEN_IMPORTCLASS]    = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_RANGE]          = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_VAR_ARGS]       = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_EOF]            = {NULL, NULL, NULL, PREC_NONE},
-   [TOKEN_ERROR]          = {NULL, NULL, NULL, PREC_NONE}
-};
+void initUintArray(UintArray* array) {
+    array->array = NULL;
+    array->capacity = 0;
+    array->count = 0;
+}
 
-/* - - - - - - - - - - */
+void writeUintArray(UintArray* array, unsigned int value) {
+    if (array->capacity < array->count + 1) {
+        int oldCapacity = array->capacity;
+        array->capacity = GROW_CAPACITY(oldCapacity);
+        array->array = GROW_ARRAY(unsigned int, array->array, oldCapacity, array->capacity);
+    }
 
+
+    array->array[array->count] = value;
+    array->count++;
+}
+
+unsigned int getUintArray(UintArray* array, int index) {
+    if (index + 1 > array->count) {
+        printf("Internal Error : Index out of range\n");
+        return 0;
+    }
+
+    return array->array[index];
+}
+
+void freeUintArray(UintArray* array) {
+    FREE_ARRAY(unsigned int, array->array, array->capacity);
+    initUintArray(array);
+}
 
 static void errorAt(Parser* parser, Token* token, const char* message) {
     if (parser->panicMode == true) return;      /* Suppress */
     parser->panicMode = true;
-    fprintf(stderr, "Error on line %d : ", token->type == TOKEN_EOF ? 1 : token->line);
+    fprintf(stderr, "Error on line %d : ", token->type == TOKEN_EOF ? token->line - 1 : token->line);
 
     if (token->type == TOKEN_EOF) {
         fprintf(stderr, "At End");
@@ -164,205 +156,691 @@ static void emitBytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
     emitByte(parser, byte2);
 }
 
-static void parsePrecedence(Scanner* scanner, Parser* parser, Precedence precedence) {
-    /* Parses given precedence and anything higher */ 
-    advance(scanner, parser);
-    /* Prefix Expressions */
-    ParseFn prefixRule = getRule(parser->previous.type)->prefix;
-    if (prefixRule == NULL) {
-        error(parser, "Expected an expression");
+static void emitLongOperand(Parser* parser, uint16_t op, uint8_t ins1, uint8_t ins2) {
+    /* Shrinks the operand down if possible */
+    if (op <= UINT8_MAX) {
+        emitBytes(parser, ins1, (uint8_t)op);
+    } else {
+        emitByte(parser, ins2);
+        writeLongByte(currentChunk(parser), op, parser->previous.line);
+    }
+}
+
+static void checkBadExpression(Scanner* scanner, Parser* parser) {
+    /* If next token is a primary after a full operator
+     * sequence, report an error */
+    if (checkPrimary(scanner, parser)) {
+        errorAtCurrent(parser, "Unexpected literal in operator sequence (Syntax Error)");
         return;
     }
-    prefixRule(scanner, parser);
-    
-    /* Infix Expressions */
-
-    while (precedence <= getRule(parser->current.type)->precedence) {
-        advance(scanner, parser);
-        ParseFn infixRule = getRule(parser->previous.type)->infix;
-
-        if (infixRule == NULL) {
-            /* What if we have a prefix expression proceeding another prefix expression 
-             * Handle the error here
-             */
-            error(parser, "Expected an expression");
-            
-            return;
-        }
-
-        infixRule(scanner, parser);
-    }
 }
 
-static ParseRule* getRule(TokenType type) {
-    return &rules[type];
-}
-
-static void synchronize(Scanner* scanner, Parser* parser) {
-    parser->panicMode = false;
-
-    while (parser->current.type != TOKEN_EOF) {
-        if (parser->previous.type == TOKEN_SEMICOLON) return;
-        switch (parser->current.type) {
-            case TOKEN_CLASS:
-            case TOKEN_FUNC:
-            case TOKEN_VAR:
-            case TOKEN_IF:
-            case TOKEN_WHILE:
-            case TOKEN_FOR:
-            case TOKEN_RETURN:
-                return;
-            
-            default:
-                continue;
-        }
-
-        advance(scanner, parser);
-    }
-}
 
 static void expression(Scanner* scanner, Parser* parser) {
-    parsePrecedence(scanner, parser, PREC_OR);
+    if (!checkPrimary(scanner, parser)) return;         /* If we dont find a primary expression, 
+                                                           we arent going to be parsing any significant ex */
+    equality(scanner, parser);
 }
 
-static void assignment(Scanner* scanner, Parser* parser) {
-    /* Envelops expression() */
-    parsePrecedence(scanner, parser, PREC_ASSIGNMENT);
+static void equality(Scanner* scanner, Parser* parser) {
+     /* Parse the left operand */
+    comparison(scanner, parser);  
+
+    while (match(scanner, parser, TOKEN_EQUAL_EQUAL) ||
+           match(scanner, parser, TOKEN_BANG_EQUAL)) {
+        
+        TokenType type = parser->previous.type;
+        /* Parse the right operand */
+        comparison(scanner, parser);
+
+        switch (type) {
+            case TOKEN_EQUAL_EQUAL:
+                emitByte(parser, OP_EQUAL);
+                break;
+            case TOKEN_BANG_EQUAL:
+                emitByte(parser, OP_NOT_EQ);
+                break;
+            default: break;
+        }
+    }
+
+    // checkBadExpression(scanner, parser);
 }
 
-static void grouping(Scanner* scanner, Parser* parser) {
-    expression(scanner, parser);
-    consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected an ')'");
+static void comparison(Scanner* scanner, Parser* parser) {
+    /* Parse the left operand */ 
+    term(scanner, parser);
+
+    while (match(scanner, parser, TOKEN_GREATER) ||
+           match(scanner, parser, TOKEN_GREATER_EQUAL) ||
+           match(scanner, parser, TOKEN_LESS) || 
+           match(scanner, parser, TOKEN_LESS_EQUAL)) {
+
+        TokenType type = parser->previous.type;
+        /* Parse the right operand */
+        term(scanner, parser);
+
+        switch (type) {
+            case TOKEN_GREATER:
+                emitByte(parser, OP_GREATER); 
+                break;
+            case TOKEN_LESS:
+                emitByte(parser, OP_LESSER);
+                break;
+            case TOKEN_LESS_EQUAL:
+                emitByte(parser, OP_LESSER_EQ);
+                break;
+            case TOKEN_GREATER_EQUAL:
+                emitByte(parser, OP_GREATER_EQ);
+                break;
+            default: break;
+        }
+    }
+
+    // checkBadExpression(scanner, parser);
 }
 
-static void binary(Scanner* scanner, Parser* parser) {
-    TokenType operator = parser->previous.type;
-    ParseRule* rule = getRule(operator);
-    /* Parse the right operand */
-    parsePrecedence(scanner, parser, (Precedence)rule->precedence + 1);
+static void term(Scanner* scanner, Parser* parser) {
+    /* Parse the left operand */
+    factor(scanner, parser);
 
-    switch (operator) {
-        case TOKEN_PLUS: emitByte(parser, OP_ADD); break;
-        case TOKEN_MINUS: emitByte(parser, OP_SUB); break;
-        case TOKEN_ASTERISK: emitByte(parser, OP_MUL); break;
-        case TOKEN_SLASH: emitByte(parser, OP_DIV); break;
-        case TOKEN_EXP: emitByte(parser, OP_POW); break;
-        case TOKEN_EQUAL_EQUAL: emitByte(parser, OP_EQUAL); break;
-        case TOKEN_BANG_EQUAL: emitByte(parser, OP_NOT_EQ); break;
-        case TOKEN_AND: emitByte(parser, OP_AND); break;
-        case TOKEN_OR: emitByte(parser, OP_OR); break;
-        case TOKEN_GREATER: emitByte(parser, OP_GREATER); break;
-        case TOKEN_GREATER_EQUAL: emitByte(parser, OP_GREATER_EQ); break;
-        case TOKEN_LESS: emitByte(parser, OP_LESSER); break;
-        case TOKEN_LESS_EQUAL: emitByte(parser, OP_LESSER_EQ); break;
+    while (match(scanner, parser, TOKEN_PLUS) ||
+           match(scanner, parser, TOKEN_MINUS)) {
+
+        TokenType type = parser->previous.type;
+
+        /* Parse the right operand */ 
+        factor(scanner, parser);
+
+        switch (type) {
+            case TOKEN_PLUS:
+                emitByte(parser, OP_ADD);
+                break;
+            case TOKEN_MINUS:
+                emitByte(parser, OP_SUB);
+                break;
+            default: break;
+        }
+    }
+
+    // checkBadExpression(scanner, parser);
+}
+
+static void factor(Scanner* scanner, Parser* parser) {
+    /* Parse the left operand */
+    highestBinary(scanner, parser);
+
+    while (match(scanner, parser, TOKEN_ASTERISK) ||
+           match(scanner, parser, TOKEN_SLASH)) {
+
+        TokenType type = parser->previous.type;
+        highestBinary(scanner, parser);
+
+        switch (type) {
+            case TOKEN_ASTERISK:
+                emitByte(parser, OP_MUL);
+                break;
+            case TOKEN_SLASH:
+                emitByte(parser, OP_DIV);
+                break;
+            default: break;
+        }
+    }
+
+    // checkBadExpression(scanner, parser);
+}
+
+static void highestBinary(Scanner* scanner, Parser* parser) {
+    unary(scanner, parser);
+    while (match(scanner, parser, TOKEN_EXP)) {
+        TokenType type = parser->previous.type;
+        unary(scanner, parser);
+        
+        switch (type) {
+            case TOKEN_EXP:
+                emitByte(parser, OP_POW);
+                break;
+            default: return;
+        }
+    }
+
+    // checkBadExpression(scanner, parser);
+}
+
+static void unary(Scanner* scanner, Parser* parser) {
+    if (match(scanner, parser, TOKEN_BANG) ||
+        match(scanner, parser, TOKEN_MINUS)) {
+        TokenType type = parser->previous.type;
+        call(scanner, parser);
+        switch (type) {
+            case TOKEN_BANG:
+                emitByte(parser, OP_NOT);
+                break;
+            case TOKEN_MINUS:
+                emitByte(parser, OP_NEGATE);
+                break;
+            default:
+                return;
+        }
+        // checkBadExpression(scanner, parser);
+    } else {
+        /* Head to primary */
+        call(scanner, parser);
+    }
+}
+
+static void call(Scanner* scanner, Parser* parser) {
+    primary(scanner, parser);
+}
+
+static void primary(Scanner* scanner, Parser* parser) {
+    if (!checkPrimary(scanner, parser)) {
+        errorAtCurrent(parser, "Expected Expression (Syntax Error)");
+        return;
+    }
+    switch (parser->current.type) {
+        case TOKEN_ROUND_OPEN:
+            parseGrouping(scanner, parser);
+            break;
+        case TOKEN_NUMBER:
+            parseNumber(scanner, parser);
+            break;
+        case TOKEN_STRING:
+            parseString(scanner, parser);
+            break;
+        case TOKEN_FALSE:
+            parseBoolean(scanner, parser, false);
+            break;
+        case TOKEN_TRUE:
+            parseBoolean(scanner, parser, true);
+            break;
+        case TOKEN_NIL:
+            parseNil(scanner, parser);
+            break;
+        case TOKEN_IDENTIFIER:
+            parseReadIdentifier(scanner, parser); 
+            break;
         default: return;
     }
 }
 
-static void unary(Scanner* scanner, Parser* parser) {
-    TokenType operator = parser->previous.type;
-    
-    /* Parse the operand */
-    parsePrecedence(scanner, parser, PREC_UNARY);
-
-    switch (operator) {
-        case TOKEN_MINUS: emitByte(parser, OP_NEGATE); break;
-        case TOKEN_BANG: emitByte(parser, OP_NOT); break;
-        default: return;        /* Unknown */
+static bool checkPrimary(Scanner* scanner, Parser* parser) {
+    switch (parser->current.type) {
+        case TOKEN_NUMBER:
+        case TOKEN_STRING:
+        case TOKEN_FALSE:
+        case TOKEN_TRUE:
+        case TOKEN_NIL:
+        case TOKEN_IDENTIFIER:
+        case TOKEN_ROUND_OPEN:
+        /* unaries */
+        case TOKEN_MINUS:
+        case TOKEN_BANG:
+            return true;
+        default: return false;
     }
 }
 
-static void bool_false(Scanner* scanner, Parser* parser) {
-    emitByte(parser, OP_FALSE);    
+static void parseNumber(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    double num = strtod(parser->previous.start, NULL);
+    writeConstant(currentChunk(parser), NATIVE_TO_NUMBER(num), parser->previous.line); 
 }
 
-static void bool_true(Scanner* scanner, Parser* parser) {
-    emitByte(parser, OP_TRUE);
+static void parseString(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    Value value = OBJ(allocateString(parser->vm, parser->previous.start + 1, parser->previous.length - 2));
+    writeConstant(currentChunk(parser), value, parser->previous.line);
 }
 
-static void nil(Scanner* scanner, Parser* parser) {
+static void parseBoolean(Scanner* scanner, Parser* parser, bool value) {
+    advance(scanner, parser);
+    value ? emitByte(parser, OP_TRUE) : emitByte(parser, OP_FALSE);
+}
+
+static void parseNil(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
     emitByte(parser, OP_NIL);
 }
 
-static void string(Scanner* scanner, Parser* parser) {
-    int index = writeConstant(currentChunk(parser), OBJ(allocateString(parser->vm, parser->previous.start + 1, parser->previous.length - 2)), 
-                parser->previous.line);
+static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, uint8_t longins) {
+    Value value = OBJ(allocateString(parser->vm, identifier.start, identifier.length));
+    uint16_t index = makeConstant(currentChunk(parser), value);
 
-    if (index > CONSTANT_MAX) {
-        error(parser, "Too many constants in a chunk");
+    emitLongOperand(parser, index, normins, longins);
+}
+
+static void parseReadIdentifier(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // Consume the identifier
+
+    Token identifier = parser->previous;
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_GET_GLOBAL, OP_GET_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_GET_LOCAL, (uint8_t)localIndex);
     }
 }
 
-static void number(Scanner* scanner, Parser* parser) {
-    Value value = NATIVE_TO_NUMBER(strtod(parser->previous.start, NULL));
-    int index = writeConstant(currentChunk(parser), value, parser->previous.line);
-
-    if (index > CONSTANT_MAX) {
-        error(parser, "Too many constants in a chunk");
-    }
+static void parseGrouping(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);       /* Consume '(' */ 
+    expression(scanner, parser);
+    consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected a ')' to close expression (Syntax Error)"); 
 }
 
-static void exprStatement(Scanner* scanner, Parser* parser) {
-     assignment(scanner, parser);
-     // Debug (replace OP_RET with OP_POP) 
-     emitByte(parser, OP_RET);
-     match(scanner, parser, TOKEN_SEMICOLON);
-}
+static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // consume 'global'
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in global declaration");
+    Token identifier = parser->previous;
 
-static int parseIdentifier(Scanner* scanner, Parser* parser) {
-    Value value = OBJ(allocateString(parser->vm, parser->previous.start, parser->previous.length));
-    uint16_t index = (uint16_t)writeConstant(currentChunk(parser), value, parser->previous.line);
-
-    if (index > CONSTANT_MAX) {
-        error(parser, "Too many constants in a chunk");
+    if (match(scanner, parser, TOKEN_EQUAL)) {
+        expression(scanner, parser); 
+    } else {
+        emitByte(parser, OP_NIL);
     }
 
-    return index;
+    parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL);
+    match(scanner, parser, TOKEN_SEMICOLON);
 }
 
-static void globalDeclaration(Scanner* scanner, Parser* parser) {
+static void parseAssign(Scanner* scanner, Parser* parser, Token identifier) { 
     advance(scanner, parser);
-    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier");
-    u_int16_t index = parseIdentifier(scanner, parser);
+    expression(scanner, parser);
     
-    if (parser->current.type == TOKEN_EQUAL) {
-        advance(scanner, parser);
+    int localIndex = resolveLocal(parser, identifier);
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_ASSIGN_GLOBAL, OP_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void parsePlusAssign(Scanner* scanner, Parser* parser, Token identifier) {
+    advance(scanner, parser);           // Consume operator 
+    expression(scanner, parser);
+
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_PLUS_ASSIGN_GLOBAL, OP_PLUS_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_PLUS_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void parseMinusAssign(Scanner* scanner, Parser* parser, Token identifier) {
+    advance(scanner, parser);
+    expression(scanner, parser);
+
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_SUB_ASSIGN_GLOBAL, OP_SUB_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_MINUS_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void parseMulAssign(Scanner* scanner, Parser* parser, Token identifier) {
+    advance(scanner, parser);
+    expression(scanner, parser);
+
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_MUL_ASSIGN_GLOBAL, OP_MUL_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_MUL_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void parseDivAssign(Scanner* scanner, Parser* parser, Token identifier) {
+    advance(scanner, parser);
+    expression(scanner, parser);
+
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_DIV_ASSIGN_GLOBAL, OP_DIV_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_DIV_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void parsePowAssign(Scanner* scanner, Parser* parser, Token identifier) {
+    advance(scanner, parser);
+    expression(scanner, parser);
+
+    int localIndex = resolveLocal(parser, identifier);
+
+    if (localIndex == -1) {
+        parseIdentifier(parser, identifier, OP_POW_ASSIGN_GLOBAL, OP_POW_ASSIGN_LONG_GLOBAL);
+    } else {
+        emitBytes(parser, OP_POW_ASSIGN_LOCAL, (uint8_t)localIndex);
+    }
+}
+
+static void beginScope(Parser* parser) {
+    parser->compiler->scopeDepth++;
+}
+
+static void endScope(Parser* parser) {
+    int count = 0;
+    for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
+        if (parser->compiler->locals[i].depth != parser->compiler->scopeDepth) break;
+        count++;
+        parser->compiler->localCount--;
+    }
+
+    if (count != 0) {
+        emitBytes(parser, OP_POPN, (uint8_t)count);         // Pop off all the locals which were made
+    }
+    parser->compiler->scopeDepth--;
+
+}
+
+static int resolveLocal(Parser* parser, Token identifier) {
+    for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
+        Local local = parser->compiler->locals[i];
+        if (identifiersEqual(local.identifier, identifier)) {
+            return i;
+        }
+    }
+
+    return -1;          /* No local found with the given name */
+}
+
+static bool identifiersEqual(Token id1, Token id2) {
+    if (id1.length != id2.length) return false;
+    return memcmp(id1.start, id2.start, id1.length) == 0;
+}
+
+static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);               // Consume 'var' 
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in local declaration");
+    Token identifier = parser->previous;
+
+    if (parser->compiler->localCount >= UINT8_MAX + 1) {
+        errorAt(parser, &identifier, "Cannot contain more than 256 local variables in 1 scope");
+        return;
+    }
+
+    for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
+        Local local = parser->compiler->locals[i];
+
+        if (local.depth < parser->compiler->scopeDepth) break;
+        if (identifiersEqual(local.identifier, identifier)) {
+            errorAt(parser, &identifier, "Attempt to re-declare a local variable inside the same scope");
+            return;
+        }
+
+    }
+
+    if (match(scanner, parser, TOKEN_EQUAL)) {
         expression(scanner, parser);
     } else {
         emitByte(parser, OP_NIL);
     }
 
     match(scanner, parser, TOKEN_SEMICOLON);
+
+    Local local;
+    local.depth = parser->compiler->scopeDepth;
+    local.identifier = identifier;
+
+    parser->compiler->locals[parser->compiler->localCount] = local;
+    parser->compiler->localCount++;
+
+    /* No opcode to define a local because this stack slot where we pushed the value 
+     * is the local, the stack slot is reserved for it and the compiler takes account of 
+     * which slot each local belongs to using the locals array*/
+}
+
+static void parsePrintStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    expression(scanner, parser);
+    emitByte(parser, OP_PRINT);
+    match(scanner, parser, TOKEN_SEMICOLON);
+}
+
+static unsigned int emitJump(Parser* parser, uint8_t ins1, uint8_t ins2) {
+    unsigned int index = currentChunk(parser)->elem_count + 1;
+    
+    if ((index - 1) <= UINT8_MAX) {
+        emitBytes(parser, ins1, 0xff);
+    } else {
+        emitLongOperand(parser, 0xffff, ins2, ins2);
+    }
+
+    return index;
+}
+
+static void patch(Parser* parser, unsigned int index) {
+    uint8_t instruction = currentChunk(parser)->code[index - 1];
+    /* Minus one because instructions are base 0, while the actual count is base 1 */
+    uint16_t offset = currentChunk(parser)->elem_count - index - 1;
+
+    if (instruction == OP_JMP || instruction == OP_JMP_FALSE || instruction == OP_JMP_BACK) {
+        /* 8 bit */ 
+        currentChunk(parser)->code[index] = (uint8_t)offset;
+    } else if (instruction == OP_JMP_LONG || instruction == OP_JMP_FALSE_LONG || instruction == OP_JMP_BACK_LONG) {
+       writeLongByte(currentChunk(parser), offset, parser->previous.line); 
+    } else {
+    }
+}
+
+static void parseIfStatement(Scanner* scanner, Parser* parser) {
+    UintArray patchIndexes;
+    initUintArray(&patchIndexes);
+
+    advance(scanner, parser);
+    expression(scanner, parser);
+    
+    if (parser->current.type != TOKEN_COLON) {
+        errorAtCurrent(parser, "Expected an ':' in if statement");
+        return;
+    }
+
+    advance(scanner, parser);
+    
+    beginScope(parser);
+
+    bool elseIfFound = false;
+    bool elseFound = false;
+    unsigned int latestElseIfIndex = 0;
+    unsigned int ifIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+     
+    while (parser->current.type != TOKEN_EOF &&
+          parser->current.type != TOKEN_ELSE && 
+          parser->current.type != TOKEN_ELSEIF &&
+          parser->current.type != TOKEN_END) {
+        statement(scanner, parser);
+    }
+    writeUintArray(&patchIndexes, emitJump(parser, OP_JMP, OP_JMP_LONG));
+
+    if (parser->current.type == TOKEN_EOF) {
+        errorAtCurrent(parser, "Unclosed If-Block");
+        return;
+    }
+
+
+    
+    while (parser->current.type == TOKEN_ELSEIF) {
+        if (!elseIfFound) {
+            patch(parser, ifIndex);
+            elseIfFound = true;
+        } else {
+            patch(parser, latestElseIfIndex);
+        }
+
+        advance(scanner, parser);
+        expression(scanner, parser);
+        consume(scanner, parser, TOKEN_COLON, "Expected an ':' in else-if clause");
+        latestElseIfIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+
+        while (parser->current.type != TOKEN_EOF &&
+               parser->current.type != TOKEN_ELSEIF &&
+               parser->current.type != TOKEN_ELSE &&
+               parser->current.type != TOKEN_END) {
+            statement(scanner, parser);
+        }
+        writeUintArray(&patchIndexes, emitJump(parser, OP_JMP, OP_JMP_LONG));
+
+    }
+
+    if (parser->current.type == TOKEN_ELSE) {
+        advance(scanner, parser);
+
+        if (parser->current.type != TOKEN_COLON) {
+            errorAtCurrent(parser, "Expected ':' in else clause");
+        }
+        advance(scanner, parser);
+        if (elseIfFound) {
+            patch(parser, latestElseIfIndex);
+        } else {
+            patch(parser, ifIndex);
+        }
+        elseFound = true;
+
+        while (parser->current.type != TOKEN_EOF &&
+               parser->current.type != TOKEN_END) {
+            
+            statement(scanner, parser);
+        }
+    }
+
+    if (parser->current.type == TOKEN_EOF) {
+        errorAtCurrent(parser, "Unclosed If-Block");
+        return;
+    }
+
+    consume(scanner, parser, TOKEN_END, "Expected an 'end'");  
+    
+    if (!elseIfFound && !elseFound) {
+        /* patch the unpatched OP_JMP_FALSE */
+        patch(parser, ifIndex);
+    }
+
+    /* Patch all the OP_JMP indexes to the end point */ 
+    for (int i = 0; i < patchIndexes.count; i++) {
+        patch(parser, getUintArray(&patchIndexes, i));
+    }
+
+    endScope(parser);
+    freeUintArray(&patchIndexes);
+}
+
+static void parseBlock(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // Parse the ':'
+
+    /* Enter a new scope */
+    beginScope(parser);
+
+    while (parser->current.type != TOKEN_END &&
+           parser->current.type != TOKEN_EOF) {
+        
+        statement(scanner, parser);
+    }
+
+    if (parser->current.type == TOKEN_EOF) {
+        errorAtCurrent(parser, "Unclosed block");
+        return;
+    }
+
+    consume(scanner, parser, TOKEN_END, "Expected an 'end' to close block");
+
+    /* Leave the scope */ 
+    endScope(parser);
+}
+
+
+
+static void synchronize(Scanner* scanner, Parser* parser) {
+    parser->panicMode = false;
+    while (parser->current.type != TOKEN_EOF) {  
+        advance(scanner, parser);
+        switch (parser->current.type) {
+            case TOKEN_VAR:
+            case TOKEN_CLASS:
+            case TOKEN_GLOBAL:
+            case TOKEN_FUNC:
+            case TOKEN_RETURN:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_FOR:
+                return;
+
+            default: ;
+        }
+    }
 }
 
 static void statement(Scanner* scanner, Parser* parser) {
     switch (parser->current.type) {
-        case TOKEN_GLOBAL:
-            globalDeclaration(scanner, parser);
-        default:
-            exprStatement(scanner, parser);
+        case TOKEN_GLOBAL: parseGlobalDeclaration(scanner, parser); break;
+        case TOKEN_VAR: parseLocalDeclaration(scanner, parser); break;
+        case TOKEN_IF: parseIfStatement(scanner, parser); break;
+        case TOKEN_PRINT: parsePrintStatement(scanner, parser); break;
+        case TOKEN_IDENTIFIER: callStatement(scanner, parser); break;
+        default: errorAtCurrent(parser, "Unexpected Token, expected a statement (Syntax Error)");
     }
+    if (parser->panicMode) synchronize(scanner, parser);
 }
 
+static void callStatement(Scanner* scanner, Parser* parser) {
+    /* this function's job is to decide whether the statement is a suitable 
+     * identifier call statement or not, if its not, it calls the assignmentStatement() 
+     * function to continue with assignment */
+    assignmentStatement(scanner, parser);
+}
+
+static void assignmentStatement(Scanner* scanner, Parser* parser) {
+    /* Temporarily assigns only single identifier globals */ 
+    Token identifier = parser->current;
+    advance(scanner, parser);                   // Consume the identifier
+    
+    switch (parser->current.type) {
+        case TOKEN_EQUAL:
+            parseAssign(scanner, parser, identifier);
+            break;
+        case TOKEN_PLUS_EQUAL:
+            parsePlusAssign(scanner, parser, identifier);
+            break;
+        case TOKEN_MINUS_EQUAL:
+            parseMinusAssign(scanner, parser, identifier);
+            break;
+        case TOKEN_MUL_EQUAL:
+            parseMulAssign(scanner, parser, identifier);
+            break;
+        case TOKEN_DIV_EQUAL:
+            parseDivAssign(scanner, parser, identifier);
+            break;
+        case TOKEN_POW_EQUAL:
+            parsePowAssign(scanner, parser, identifier);
+            break;
+        default: 
+            errorAtCurrent(parser, "Expected Assignment");
+            break;
+    }
+    match(scanner, parser, TOKEN_SEMICOLON);
+}
 
 InterpretResult compile(const char* source, Chunk* chunk, VM* vm) {
     Scanner scanner;
     Parser parser;
+    Compiler compiler;
+
     initScanner(&scanner, source);
-
-    /* Initialize */
-    parser.hadError = false;
-    parser.panicMode = false;
-    parser.vm = vm;
-    /*            */ 
-    parser.compilingChunk = chunk;
+    initCompiler(&compiler);
+    initParser(&parser, chunk, &compiler, vm);
     advance(&scanner, &parser);
-
+    
+    beginScope(&parser);
     while (!match(&scanner, &parser, TOKEN_EOF)) {
         statement(&scanner, &parser);
-
-        synchronize(&scanner, &parser);
     }
+    endScope(&parser);
 
     emitByte(&parser, OP_EOF);
 

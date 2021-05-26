@@ -25,6 +25,19 @@ int constantInstruction(const char* insName, Chunk* chunk, int offset) {
                                                                the constant index in the constant pool */
 }
 
+int jumpInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint8_t ins = chunk->code[offset + 1];
+    printf("%-16s %4d\n", insName, ins);
+    return offset + 2;
+}
+
+
+int localInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint8_t localIndex = chunk->code[offset + 1];
+    printf("%-16s %4d\n", insName, localIndex);
+    return offset + 2;
+}
+
 int longConstantInstruction(const char* insName, Chunk* chunk, int offset) {
     uint16_t constantIndex = chunk->code[offset + 1] | chunk->code[offset + 2] << 8;
     printf("%-16s %4d '", insName, constantIndex);
@@ -49,6 +62,8 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_EOF:
             return simpleInstruction("OP_EOF", offset);
+        case OP_PRINT:
+            return simpleInstruction("PRINT", offset);
         case OP_RET:
             return simpleInstruction("OP_RET", offset);
         case OP_CONST:
@@ -99,6 +114,64 @@ int dissembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("NOT", offset);
         case OP_EQUAL:
             return simpleInstruction("EQUAL", offset);
+        case OP_DEFINE_GLOBAL:
+            return constantInstruction("DEFINE_GLOBAL", chunk, offset);
+        case OP_DEFINE_LONG_GLOBAL:
+            return constantInstruction("DEFINE_LONG_GLOBAL", chunk, offset);
+        case OP_GET_GLOBAL:
+            return constantInstruction("GET_GLOBAL", chunk, offset);
+        case OP_GET_LONG_GLOBAL:
+            return constantInstruction("GET_LONG_GLOBAL", chunk, offset);
+        case OP_ASSIGN_GLOBAL:
+            return constantInstruction("ASSIGN_GLOBAL", chunk, offset);
+        case OP_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_PLUS_ASSIGN_GLOBAL:
+            return constantInstruction("PLUS_ASSIGN_GLOBAL", chunk, offset);
+        case OP_PLUS_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("PLUS_ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_SUB_ASSIGN_GLOBAL:
+            return constantInstruction("SUB_ASSIGN_GLOBAL", chunk, offset);
+        case OP_SUB_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("SUB_ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_MUL_ASSIGN_GLOBAL:
+            return constantInstruction("MUL_ASSIGN_GLOBAL", chunk, offset);
+        case OP_MUL_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("MUL_ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_DIV_ASSIGN_GLOBAL:
+            return constantInstruction("DIV_ASSIGN_GLOBAL", chunk, offset);
+        case OP_DIV_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("DIV_ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_POW_ASSIGN_GLOBAL:
+            return constantInstruction("POW_ASSIGN_GLOBAL", chunk, offset);
+        case OP_POW_ASSIGN_LONG_GLOBAL:
+            return constantInstruction("POW_ASSIGN_LONG_GLOBAL", chunk, offset);
+        case OP_ASSIGN_LOCAL:
+            return localInstruction("ASSIGN_LOCAL", chunk, offset);
+        case OP_PLUS_ASSIGN_LOCAL:
+            return localInstruction("PLUS_ASSIGN_LOCAL", chunk, offset);
+        case OP_MINUS_ASSIGN_LOCAL:
+            return localInstruction("MINUS_ASSIGN_LOCAL", chunk, offset);
+        case OP_MUL_ASSIGN_LOCAL:
+            return localInstruction("MUL_ASSIGN_LOCAL", chunk, offset);
+        case OP_DIV_ASSIGN_LOCAL:
+            return localInstruction("DIV_ASSIGN_LOCAL", chunk, offset);
+        case OP_POW_ASSIGN_LOCAL:
+            return localInstruction("POW_ASSIGN_LOCAL", chunk, offset);
+        case OP_GET_LOCAL:
+            return localInstruction("GET_LOCAL", chunk, offset);
+        case OP_POPN: {
+            return localInstruction("POPN", chunk, offset);
+        }
+        case OP_JMP: {
+            return jumpInstruction("JMP", chunk, offset);
+        }
+        case OP_JMP_FALSE: {
+            return jumpInstruction("JMP_FALSE", chunk, offset);
+        }
+        case OP_JMP_BACK: {
+            return jumpInstruction("JMP_BACK", chunk, offset);
+        }
         default:
             printf("Unknown opcode %d\n", instruction); 
             return offset + 1;

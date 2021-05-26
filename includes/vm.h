@@ -12,6 +12,7 @@ typedef struct {
     Value stack[STACK_MAX]; /* Stack */
     Value* stackTop;
     Table strings;          /* Used for string interning */
+    Table globals;
     Obj* ObjHead;       /* Used for tracking the object linked list */
 } VM;
 

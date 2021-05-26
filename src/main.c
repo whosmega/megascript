@@ -75,15 +75,15 @@ void runFile(const char* fileName) {
 }
 
 void repl() {
-    VM vm;
-    Chunk chunk;
     char buffer[1024];
-    bool ran = false;
-    initVM(&vm);
 //     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
 //     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
 
     for (;;) {
+        VM vm;
+        Chunk chunk;
+        initVM(&vm);
+
         printf("> ");
         if (!fgets(buffer, sizeof(buffer), stdin)) {
             printf("\n");
@@ -91,14 +91,11 @@ void repl() {
         }
         
         if (memcmp(buffer, ".exit", 5) == 0) {
-            if (ran) {
-                freeChunk(&chunk);
-                freeVM(&vm);
-            }
+            freeChunk(&chunk);
+            freeVM(&vm);
             exit(0);
         }
         initChunk(&chunk);
-        ran = true;
         InterpretResult result1 = compile(buffer, &chunk, &vm);
         loadChunk(&vm, &chunk);
         if (result1 == INTERPRET_OK) { 

@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include "../includes/chunk.h"
 #include "../includes/memory.h"
@@ -32,9 +33,18 @@ void freeChunk(Chunk* chunk) {
     initChunk(chunk);                                       /* Re-Initialize the chunk */
 }
 
-int writeConstant(Chunk* chunk, Value value, int line) {
-    writeValueArray(&chunk->constants, value);  
-    int index = chunk->constants.count - 1;
+int makeConstant(Chunk* chunk, Value value) {
+    writeValueArray(&chunk->constants, value);
+    return chunk->constants.count - 1;
+}
+
+void writeLongByte(Chunk* chunk, uint16_t byte, int line) {
+    writeChunk(chunk, (uint8_t)((byte >> 0) & 0xFF), line);
+    writeChunk(chunk, (uint8_t)((byte >> 8) & 0xFF), line); 
+}
+
+int writeConstant(Chunk* chunk, Value value, int line) {  
+    int index = makeConstant(chunk, value);
 
     if (index <= (1 << 8) - 1) {
         /* if index fits in the 8-bit uint range then use normal loader */
@@ -44,8 +54,7 @@ int writeConstant(Chunk* chunk, Value value, int line) {
         /* Otherwise load the long constant bytecode */
         /* and split the 16 bit index into 2 8-bit values to write them */
         writeChunk(chunk, OP_CONST_LONG, line);
-        writeChunk(chunk, (uint8_t)(((uint16_t)index >> 0) & 0xFF), line);
-        writeChunk(chunk, (uint8_t)(((uint16_t)index >> 8) & 0XFF), line);
+        writeLongByte(chunk, (uint16_t)index, line);
     }
 
     return index;

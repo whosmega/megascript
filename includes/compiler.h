@@ -6,40 +6,40 @@
 #include "../includes/scanner.h"
 
 typedef struct {
+    Token identifier;
+    int depth;
+} Local;
+
+typedef struct {
+    Local locals[UINT8_MAX + 1];
+    int localCount;
+    int scopeDepth;
+} Compiler;
+
+typedef struct {
     Token previous;
     Token current;
     Chunk* compilingChunk;
+    Compiler* compiler;
     VM* vm;
     bool hadError;
     bool panicMode;         /* When panic mode is set to true all 
                              * further errors get suppressed */
 } Parser;
 
-typedef enum {
-    PREC_NONE,              // None 
-    PREC_ASSIGNMENT,        // =
-    PREC_OR,                // or
-    PREC_AND,               // and 
-    PREC_EQUALITY,          // == !=
-    PREC_COMPARISON,        // > < >= <=
-    PREC_TERM,              // + -
-    PREC_FACTOR,            // * /
-    PREC_EXP_MOD,           // ^ %
-    PREC_UNARY,             // - ++a --a a++ a-- 
-    PREC_CALL,              // . ()
-    PREC_PRIMARY            // 4 90.3
-} Precedence;
-
-typedef void (*ParseFn)(Scanner* scanner, Parser* parser);
-
 typedef struct {
-    ParseFn prefix;
-    ParseFn infix;
-    ParseFn postfix;
-    Precedence precedence;
-} ParseRule;
+    unsigned int* array;
+    int count;
+    int capacity;
+} UintArray;
 
+void initUintArray(UintArray* array);
+void writeUintArray(UintArray* array, unsigned int value);
+unsigned int getUintArray(UintArray* array, int index);
+void freeUintArray(UintArray* array);
 
+void initCompiler(Compiler* compiler);
+void initParser(Parser* parser, Chunk* chunk, Compiler* compiler, VM* vm);
 InterpretResult compile(const char* source, Chunk* chunk, VM* vm); 
 
 #endif

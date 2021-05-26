@@ -3,7 +3,7 @@
 #include "../includes/chunk.h"
 
 // #define DEBUG_TRACE_EXECUTION
-// #define DEBUG_PRINT_BYTECODE
+#define DEBUG_PRINT_BYTECODE
 
 void dissembleChunk(Chunk* chunk, const char* name);        /* Dissembles an entire given chunk with name */
 int dissembleInstruction(Chunk* chunk, int offset);         /* Helper function to dissemle a single instruction 

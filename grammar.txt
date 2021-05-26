@@ -1,0 +1,66 @@
+---------------------------[Expressions]------------------------------
+
+expression -> equality;
+
+equality   -> comparison (('==' | '!=') comparison)*;
+
+comparison -> term (('>=' | '>' | '<' | '<=' term)*;
+
+term       -> factor (('+' | '-') factor)*;
+
+factor     -> highestBinary (('*' | '/') highestBinary)*;
+
+highestBinary -> unary (('%' | '^') unary)*;
+
+unary      -> (('not' | '-' | '--' | '++') call)*
+              | call;
+
+call       -> IDENTIFIER   ('.' call)?                    // Recursively calls itself since it has the capability to yield a identifier, idcall, or tableindex
+              | idcall     ('.' call)?
+              | tableindex ('.' call)?
+              | primary    ('.' call)?;
+
+
+primary    -> STRING | NUMBER | IDENTIFIER | '(' expression ')' | true | false | nil;
+
+------------------------------------------------------------------------
+
+-----------------------------[Statements]-------------------------------
+
+statement -> globalDeclaration |
+             variableDeclaration |
+             functionDeclaration |
+             classDeclaration |
+             callStatement
+
+
+globalDeclaration       -> 'global' IDENTIFIER (',' IDENTIFIER)* '=' expression (',' expression)*;
+
+varDeclaration          -> 'var' IDENTIFIER (',' IDENTIFIER)* '=' expression (',' expression)*;
+
+functionDeclaration     -> 'func' IDENTIFIER '(' IDENTIFIER (',' IDENTIFIER)* ')' ':'
+                            statement*
+                           'end'
+
+classDeclaration        -> 'class' IDENTIFIER ':'
+                           (functionDeclaration | varDeclaration)*
+                           'end'
+
+callStatement           ->  call ('.' idcall) (';')? |          // The last one strictly needs to be an identifier call only 
+                            assignmentStatement;                // If signs of an assigment are discovered or a call is not possible, this is called
+
+assignmentStatement     ->  target (',' target)* 
+                            ('=' | '+=' | '-=' | '*=' | '/=' | '^=' | '%=' ) 
+                            expression (',' expression)* (';')?;
+
+
+------------------------------------------------------------------------
+
+-------------------------------[Helpers]--------------------------------
+
+target    -> call ('.' (IDENTIFIER | tableindex));        // A bunch of calls followed by either a straightforward index by identifier or a table index 
+
+tableindex  -> IDENTIFIER '[' expression ']';               // Describes a table index
+
+idcall      -> IDENTIFIER '(' expression (',' expression)* ')';           // Describes a function / class call
+------------------------------------------------------------------------

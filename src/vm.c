@@ -12,14 +12,34 @@
 #include <string.h>
 
 #define READ_BYTE(vmpointer) (*vmpointer->ip++)
+#define READ_LONG_BYTE(vmpointer) (READ_BYTE(vmpointer) | READ_BYTE(vmpointer) << 8)
 #define READ_CONSTANT(vmpointer) \
     (vmpointer->chunk->constants.values[READ_BYTE(vmpointer)])
 #define READ_LONG_CONSTANT(vmpointer) \
-    (vmpointer->chunk->constants.values[(READ_BYTE(vmpointer) | READ_BYTE(vmpointer) << 8)])
+    (vmpointer->chunk->constants.values[READ_LONG_BYTE(vmpointer)])
+
+#define ASSIGN_GLOBAL(vmpointer, valueName, valueFeeder) \
+    valueName = READ_CONSTANT(vmpointer); \
+    bool found = getTable(&vmpointer->globals, AS_STRING(valueName), &valueFeeder); \
+    if (!found) { \
+      runtimeError(vmpointer, "Error : Attempt to assign undefined global '%s'", AS_NATIVE_STRING(valueName)); \
+      return INTERPRET_RUNTIME_ERROR; \
+    }
+ 
+#define ASSIGN_LONG_GLOBAL(vmpointer, valueName, valueFeeder) \
+    valueName = READ_LONG_CONSTANT(vmpointer); \
+    bool found = getTable(&vmpointer->globals, AS_STRING(valueName), &valueFeeder); \
+    if (!found) { \
+      runtimeError(vmpointer, "Error : Attempt to assign undefined global '%s'", AS_NATIVE_STRING(valueName)); \
+      return INTERPRET_RUNTIME_ERROR; \
+    }
+
+
 
 void initVM(VM* vm) {
     vm->ObjHead = NULL;
     initTable(&vm->strings);
+    initTable(&vm->globals);
     resetStack(vm);
 }
 
@@ -29,8 +49,9 @@ void loadChunk(VM* vm, Chunk* chunk) {
 }
 
 void freeVM(VM* vm) {
-    freeObjects(vm);
     freeTable(&vm->strings);
+    freeTable(&vm->globals);
+    freeObjects(vm);
 }
 
 void resetStack(VM* vm) {
@@ -119,14 +140,421 @@ static InterpretResult run(VM* vm) {
             case OP_EOF: {
                 return INTERPRET_OK;
             }
-            case OP_RET: {
-                /* Temporary Operation is to print the top of stack */
-                Value value = pop(vm);
-                printValue(value);
+            case OP_PRINT: {
+                printValue(pop(vm));
                 printf("\n");
                 break;
             }
+            case OP_JMP: {
+                /* Reads 8 bit */ 
+                vm->ip += READ_BYTE(vm);
+                break;
+            }
+            case OP_JMP_LONG: {
+                /* Reads 16 bit */ 
+                vm->ip += READ_LONG_BYTE(vm);
+                break;
+            }
+            case OP_JMP_FALSE: {
+                /* Reads 8 bit */
+                uint8_t byte = READ_BYTE(vm);
+                if (isFalsey(pop(vm))) {
+                    vm->ip += byte;
+                }
+
+                break;
+            }
+            case OP_JMP_FALSE_LONG: {
+                /* Reads 16 bit */
+                uint16_t byte = READ_LONG_BYTE(vm);
+                if (!isFalsey(pop(vm))) break;
+                vm->ip += byte;
+                break;
+            }
+            case OP_JMP_BACK: {
+                /* Reads 8 bit */ 
+                vm->ip -= READ_BYTE(vm);
+                break;
+            }
+            case OP_JMP_BACK_LONG: {
+                /* Reads 16 bit */ 
+                vm->ip -= READ_LONG_BYTE(vm);
+                break;
+            }
+            case OP_RET: {
+                break;
+            }
+            case OP_DEFINE_GLOBAL: {
+                Value name = READ_CONSTANT(vm);
+                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                break;
+            }
+            case OP_DEFINE_LONG_GLOBAL: {
+                Value name = READ_LONG_CONSTANT(vm);
+                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                break;
+            }
+            case OP_GET_GLOBAL: {
+                Value feeder;
+                Value name = READ_CONSTANT(vm);
+                bool found = getTable(&vm->globals, AS_STRING(name), &feeder);
+
+                push(vm, found ? feeder : NIL());
+                break;
+            }
+            case OP_GET_LONG_GLOBAL: {
+                Value feeder;
+                Value name = READ_LONG_CONSTANT(vm);
+                bool found = getTable(&vm->globals, AS_STRING(name), &feeder);
+
+                push(vm, found ? feeder : NIL());
+                break;
+            }
+            case OP_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                ASSIGN_GLOBAL(vm, name, feeder);
+                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                break;
+            } 
+            case OP_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                break;
+            }
+            case OP_PLUS_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '+=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '+='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) + AS_NUMBER(increment)
+                ));
+                break;
+            }
+            case OP_PLUS_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '+=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '+='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) + AS_NUMBER(increment)
+                ));
+                break;
+
+            }
+            case OP_SUB_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '-=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '-='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) - AS_NUMBER(increment)
+                ));
+                break;
+
+            }
+            case OP_SUB_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '-=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '-='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) - AS_NUMBER(increment)
+                ));
+                break;
+
+
+            }
+            case OP_MUL_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '*=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '*='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) * AS_NUMBER(increment)
+                ));
+                break;
+
+            }
+            case OP_MUL_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '*=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '*='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) * AS_NUMBER(increment)
+                ));
+                break;
+
+
+            }
+            case OP_DIV_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '/=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '/='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) / AS_NUMBER(increment)
+                ));
+                break;
+
+            }
+            case OP_DIV_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '/=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '/='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            AS_NUMBER(feeder) / AS_NUMBER(increment)
+                ));
+                break;
+
+
+            }
+            case OP_POW_ASSIGN_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '^=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '^='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            pow(AS_NUMBER(feeder), AS_NUMBER(increment))
+                ));
+                break;
+
+            }
+            case OP_POW_ASSIGN_LONG_GLOBAL: {
+                Value name;
+                Value feeder;
+                Value increment = pop(vm);
+                ASSIGN_LONG_GLOBAL(vm, name, feeder);
+                
+                if (!CHECK_NUMBER(feeder)) {
+                    runtimeError(vm, "Attempt call '^=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Non-numeric value to '^='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                            pow(AS_NUMBER(feeder), AS_NUMBER(increment))
+                ));
+                break;
+
+
+            }
+            case OP_ASSIGN_LOCAL: { 
+                uint8_t localIndex = READ_BYTE(vm);
+                vm->stack[localIndex] = pop(vm);
+                break;
+            }
+            case OP_PLUS_ASSIGN_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                Value old = vm->stack[localIndex];
+                Value new = pop(vm);
+
+                if (!CHECK_NUMBER(old)) {
+                    runtimeError(vm, "Attempt to call '+=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(new)) {
+                    runtimeError(vm, "Non-numeric value to '+='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                vm->stack[localIndex] = NATIVE_TO_NUMBER(AS_NUMBER(old) + AS_NUMBER(new));
+                break;
+            }
+            case OP_MINUS_ASSIGN_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                Value old = vm->stack[localIndex];
+                Value new = pop(vm);
+
+                if (!CHECK_NUMBER(old)) {
+                    runtimeError(vm, "Attempt to call '-=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(new)) {
+                    runtimeError(vm, "Non-numeric value to '-='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                vm->stack[localIndex] = NATIVE_TO_NUMBER(AS_NUMBER(old) - AS_NUMBER(new));
+                break;
+            }
+            case OP_MUL_ASSIGN_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                Value old = vm->stack[localIndex];
+                Value new = pop(vm);
+
+                if (!CHECK_NUMBER(old)) {
+                    runtimeError(vm, "Attempt to call '*=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(new)) {
+                    runtimeError(vm, "Non-numeric value to '*='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                vm->stack[localIndex] = NATIVE_TO_NUMBER(AS_NUMBER(old) * AS_NUMBER(new));
+                break;
+            }
+            case OP_DIV_ASSIGN_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                Value old = vm->stack[localIndex];
+                Value new = pop(vm);
+
+                if (!CHECK_NUMBER(old)) {
+                    runtimeError(vm, "Attempt to call '/=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(new)) {
+                    runtimeError(vm, "Non-numeric value to '/='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                vm->stack[localIndex] = NATIVE_TO_NUMBER(AS_NUMBER(old) / AS_NUMBER(new));
+                break;
+            }
+            case OP_POW_ASSIGN_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                Value old = vm->stack[localIndex];
+                Value new = pop(vm);
+
+                if (!CHECK_NUMBER(old)) {
+                    runtimeError(vm, "Attempt to call '^=' on a non-numeric value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(new)) {
+                    runtimeError(vm, "Non-numeric value to '^='");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                vm->stack[localIndex] = NATIVE_TO_NUMBER(pow(AS_NUMBER(old), AS_NUMBER(new)));
+                break;
+            }
+            case OP_GET_LOCAL: {
+                uint8_t localIndex = READ_BYTE(vm);
+                push(vm, vm->stack[localIndex]);
+                break;
+            }
             case OP_POP: pop(vm); break;
+            case OP_POPN: {
+                uint8_t count = READ_BYTE(vm);
+                for (uint8_t i = 0; i <= count; i++) {
+                    pop(vm);
+                }
+                break;
+            }
             case OP_CONST: {
                 Value constant = READ_CONSTANT(vm);
                 push(vm, constant);
