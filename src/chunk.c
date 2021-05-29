@@ -43,6 +43,13 @@ void writeLongByte(Chunk* chunk, uint16_t byte, int line) {
     writeChunk(chunk, (uint8_t)((byte >> 8) & 0xFF), line); 
 }
 
+void writeLongByteAt(Chunk* chunk, uint16_t byte, unsigned int index, int line) {
+    chunk->code[index] = (uint8_t)(byte & 0xFF);
+    chunk->lines[index] = line;
+    chunk->code[index + 1] = (uint8_t)((byte >> 8) & 0xFF);
+    chunk->lines[index + 1] = line;
+}
+
 int writeConstant(Chunk* chunk, Value value, int line) {  
     int index = makeConstant(chunk, value);
 

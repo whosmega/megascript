@@ -17,21 +17,29 @@ typedef struct {
 } Compiler;
 
 typedef struct {
+    unsigned int* array;
+    int count;
+    int capacity;
+} UintArray;
+
+typedef struct {
     Token previous;
     Token current;
     Chunk* compilingChunk;
     Compiler* compiler;
+    UintArray* unpatchedBreaks;
     VM* vm;
     bool hadError;
     bool panicMode;         /* When panic mode is set to true all 
                              * further errors get suppressed */
 } Parser;
 
-typedef struct {
-    unsigned int* array;
-    int count;
-    int capacity;
-} UintArray;
+
+typedef enum {
+    CALL_FUNC,
+    CALL_ARRAY,
+    CALL_NONE
+} CallType;
 
 void initUintArray(UintArray* array);
 void writeUintArray(UintArray* array, unsigned int value);

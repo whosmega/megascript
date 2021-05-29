@@ -59,10 +59,19 @@ typedef enum {
     OP_JMP_LONG,
     OP_JMP_FALSE_LONG,
     OP_JMP_BACK,
-    OP_JMP_BACK_LONG,
+    OP_JMP_BACK_LONG,                           
+    OP_ARRAY,                                   /* push empty array */
+    OP_ARRINIT,                                 /* push array with 'n' number of elements 
+                                                   popped from stack in order */ 
+                                                   
+    OP_ARRAY_INS,                               /* Insert new element to the last slot
+                                                   Doesnt pop off the array */
+    OP_ARRAY_PINS,                              /* same as above but pops the array */
+    OP_ARRAY_MOD,                               /* modify element at the given index */
+    OP_ARRAY_GET,                               /* push element at the given index */ 
 
-    OP_PRINT,
-    OP_EOF
+    OP_PRINT,                                   /* printing opcode for debugging only */ 
+    OP_EOF                                      /* end of file */
 } OPCODE;                                       /* Enum which defines opcodes */
 
 typedef struct {
@@ -79,6 +88,7 @@ typedef struct {
 void initChunk(Chunk* chunk);                   /* FUnction to initialize an empty chunk */
 void writeChunk(Chunk* chunk, uint8_t byte, int line);     /* Function to write 1 opcode to a chunk */
 void writeLongByte(Chunk* chunk, uint16_t byte, int line);
+void writeLongByteAt(Chunk* chunk, uint16_t byte, unsigned int index, int line);
 void freeChunk(Chunk* chunk);                   /* Function to free the chunk and all its contents */
 int writeConstant(Chunk* chunk, Value value, int line);  /* Add a new constant to the constant pool of this chunk */
 int makeConstant(Chunk* chunk, Value value);

@@ -96,10 +96,20 @@ ObjString* strConcat(VM* vm, Value val1, Value val2) {
     return allocateUnsourcedString(vm, chars, length);
 }
 
+
+ObjArray* allocateArray(VM* vm) {
+    ObjArray* array = (ObjArray*)allocateObject(vm, sizeof(*array), OBJ_ARRAY);
+    initValueArray(&array->array);
+    return array; 
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
             printf("%s", AS_NATIVE_STRING(value));
+            break;
+        case OBJ_ARRAY:
+            printf("Array <len:%d>", AS_ARRAY(value)->array.count);
             break;
         default: return;
     }
@@ -112,6 +122,13 @@ static void freeObject(Obj* obj) {
              * allocated inside the struct due to being a flexible member */
             ObjString* stringObj = (ObjString*)obj;
             reallocate(stringObj, sizeof(*stringObj), 0);
+            break;
+        }
+        case OBJ_ARRAY: {
+            /* Free the value array it contains, and the object itself */ 
+            ObjArray* arrayObj = (ObjArray*)obj;
+            freeValueArray(&arrayObj->array);
+            reallocate(arrayObj, sizeof(*arrayObj), 0);
             break;
         }
         default: return;

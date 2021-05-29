@@ -67,6 +67,10 @@ static inline Value pop(VM* vm) {
     return *(--vm->stackTop);
 }
 
+static inline void popn(VM* vm, unsigned int count) {
+    vm->stackTop -= count;
+}
+
 static inline Value peek(VM* vm, int offset) {
     return vm->stackTop[-1 - offset];
 }
@@ -143,6 +147,88 @@ static InterpretResult run(VM* vm) {
             case OP_PRINT: {
                 printValue(pop(vm));
                 printf("\n");
+                break;
+            }
+            case OP_ARRAY: {
+                push(vm, OBJ(allocateArray(vm)));
+                break;
+            }
+            case OP_ARRAY_INS: {
+                Value value = pop(vm);
+                Value array = peek(vm, 0);
+                writeValueArray(&AS_ARRAY(array)->array, value);
+                break;
+            }
+            case OP_ARRAY_PINS: {
+                Value value = pop(vm);
+                Value array = pop(vm);
+                writeValueArray(&AS_ARRAY(array)->array, value);
+                break;
+            }
+            case OP_ARRAY_MOD: {
+                Value value = pop(vm); 
+                Value index = pop(vm); 
+                Value valArray = pop(vm);
+
+                if (!CHECK_ARRAY(valArray)) {
+                    runtimeError(vm, "Attempt to modify a non-array value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+   
+                ObjArray* array = AS_ARRAY(valArray);
+
+                if (!CHECK_NUMBER(index)) {
+                    runtimeError(vm, "Expected a number for array index");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double numIndex = AS_NUMBER(index);
+
+                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
+                    runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (numIndex + 1 > array->array.count) {
+                    runtimeError(vm, "Array Index %g out of range", numIndex);
+
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                array->array.values[(int)numIndex] = value;
+                break;
+            }
+
+            case OP_ARRAY_GET: {
+                Value index = pop(vm);
+                Value valArray = pop(vm);  
+
+                if (!CHECK_ARRAY(valArray)) {
+                    runtimeError(vm, "Attempt to index a non-array value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjArray* array = AS_ARRAY(valArray);
+
+                if (!CHECK_NUMBER(index)) {
+                    runtimeError(vm, "Expected a number for array index");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double numIndex = AS_NUMBER(index);
+
+                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
+                    runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (numIndex + 1 > array->array.count) {
+                    runtimeError(vm, "Array Index %g out of range", numIndex);
+
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                push(vm, array->array.values[(int)numIndex]);
                 break;
             }
             case OP_JMP: {
@@ -550,9 +636,7 @@ static InterpretResult run(VM* vm) {
             case OP_POP: pop(vm); break;
             case OP_POPN: {
                 uint8_t count = READ_BYTE(vm);
-                for (uint8_t i = 0; i <= count; i++) {
-                    pop(vm);
-                }
+                popn(vm, count);
                 break;
             }
             case OP_CONST: {

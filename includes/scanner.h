@@ -30,7 +30,8 @@ typedef enum {
                                                                                        true, if, else, elseif] */
     TOKEN_FALSE, TOKEN_TRUE, TOKEN_IF, TOKEN_ELSE, TOKEN_ELSEIF,
     TOKEN_CLASS, TOKEN_SUPER, TOKEN_SELF, TOKEN_INHERITS, TOKEN_FUNC, TOKEN_END, 
-    TOKEN_RETURN, TOKEN_GLOBAL, TOKEN_VAR, TOKEN_NIL, TOKEN_IMPORTCLASS, 
+    TOKEN_RETURN, TOKEN_GLOBAL, TOKEN_VAR, TOKEN_NIL, TOKEN_IMPORTCLASS, TOKEN_BREAK, 
+    TOKEN_CONTINUE,
 
     TOKEN_RANGE, TOKEN_VAR_ARGS,                                                     // [{1..4}, abc(args...)]
     TOKEN_EOF, TOKEN_ERROR

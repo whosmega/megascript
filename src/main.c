@@ -79,11 +79,12 @@ void repl() {
 //     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
 //     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
 
+    bool ran = false;
     for (;;) {
         VM vm;
         Chunk chunk;
         initVM(&vm);
-
+        
         printf("> ");
         if (!fgets(buffer, sizeof(buffer), stdin)) {
             printf("\n");
@@ -91,10 +92,13 @@ void repl() {
         }
         
         if (memcmp(buffer, ".exit", 5) == 0) {
-            freeChunk(&chunk);
+            if (ran) {
+                freeChunk(&chunk);
+            }
             freeVM(&vm);
             exit(0);
         }
+        ran = true;
         initChunk(&chunk);
         InterpretResult result1 = compile(buffer, &chunk, &vm);
         loadChunk(&vm, &chunk);

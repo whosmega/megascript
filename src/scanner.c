@@ -154,6 +154,7 @@ static Token scanIdentifier(Scanner* scanner) {
 
    switch (scanner->start[0]) {
        case 'a': type = checkKeyword(scanner, 1, 2, "nd", TOKEN_AND); break;
+       case 'b': type = checkKeyword(scanner, 1, 4, "reak", TOKEN_BREAK); break;
        case 'o': type = checkKeyword(scanner, 1, 1, "r", TOKEN_OR); break;
        case 'w': type = checkKeyword(scanner, 1, 4, "hile", TOKEN_WHILE); break;
        case 'f':
@@ -192,7 +193,14 @@ static Token scanIdentifier(Scanner* scanner) {
                 }
             }
             break;
-        case 'c': type = checkKeyword(scanner, 1, 4, "lass", TOKEN_CLASS); break;
+        case 'c': 
+            if (scanner->current - scanner->start > 1) {
+                switch (scanner->start[1]) {
+                    case 'l': type = checkKeyword(scanner, 2, 3, "ass", TOKEN_CLASS); break;
+                    case 'o': type = checkKeyword(scanner, 2, 6, "ntinue", TOKEN_CONTINUE); break;
+                }
+            }
+            break;
         case 's':
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {

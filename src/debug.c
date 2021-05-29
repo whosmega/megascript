@@ -172,6 +172,24 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_JMP_BACK: {
             return jumpInstruction("JMP_BACK", chunk, offset);
         }
+        case OP_ARRAY: {
+            return simpleInstruction("ARRAY (emit)", offset);
+        }
+        case OP_ARRINIT: {
+            return localInstruction("ARRINIT", chunk, offset);
+        }
+        case OP_ARRAY_INS: {
+            return simpleInstruction("ARRAY_INS", offset);
+        }
+        case OP_ARRAY_PINS: {
+            return simpleInstruction("ARRAY_PINS", offset);
+        }
+        case OP_ARRAY_GET: {
+            return simpleInstruction("ARRAY_GET", offset);
+        }
+        case OP_ARRAY_MOD: {
+            return simpleInstruction("ARRAY_MOD", offset);
+        }
         default:
             printf("Unknown opcode %d\n", instruction); 
             return offset + 1;

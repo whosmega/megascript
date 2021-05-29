@@ -1,11 +1,6 @@
-var test = 100 - 2
+var test = [6, [90, 99-87]]
 
-if true:
-    test += test
-else:
-    test -= test 
-end
-
-print(test)
+print(test[0])
+print(test[1][1])
 
 
