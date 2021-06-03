@@ -1,6 +1,9 @@
-var test = [6, [90, 99-87]]
+var a = 0
 
-print(test[0])
-print(test[1][1])
+while a == 0:
+    var test = 0
+    var test2 = 11
+    var test3 = 111
 
-
+    break
+end

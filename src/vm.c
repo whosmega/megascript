@@ -75,7 +75,9 @@ static inline Value peek(VM* vm, int offset) {
     return vm->stackTop[-1 - offset];
 }
 
-
+static inline Value* peekptr(VM* vm, int offset) {
+    return &vm->stackTop[-1 - offset];
+}
 
 static void runtimeError(VM* vm, const char* format, ...) {
     va_list args;
@@ -147,6 +149,118 @@ static InterpretResult run(VM* vm) {
             case OP_PRINT: {
                 printValue(pop(vm));
                 printf("\n");
+                break;
+            }
+            case OP_ZERO: push(vm, NATIVE_TO_NUMBER(0)); break; 
+            case OP_MIN1: push(vm, NATIVE_TO_NUMBER(-1)); break;
+            case OP_PLUS1: push(vm, NATIVE_TO_NUMBER(1)); break;
+            case OP_ITERATE: {
+                uint8_t indexIndex = READ_BYTE(vm);
+                Value* oldIndex = peekptr(vm, 0);
+                Value valArray = peek(vm, 1);  
+                Value* indexValue = &vm->stack[indexIndex];
+
+                if (!CHECK_ARRAY(valArray)) {
+                    runtimeError(vm, "Expected an array for iteration value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                int newIndex = AS_NUMBER(*oldIndex) + 1;
+                ObjArray* array = AS_ARRAY(valArray);
+
+                // Check if the index outnumbers the element count 
+                if (AS_NUMBER(*oldIndex) + 1 > array->array.count - 1) {
+                    // We cannot continue the iteration 
+                    push(vm, NATIVE_TO_BOOLEAN(false));
+                } else {
+                    // Push the new index value 
+                    *oldIndex = NATIVE_TO_NUMBER(newIndex);
+                    // We can continue the iteration
+                    push(vm, NATIVE_TO_BOOLEAN(true));
+                    // Update the index variable 
+                    *indexValue = NATIVE_TO_NUMBER(newIndex);
+                }
+
+                break;
+ 
+
+            }
+            case OP_ITERATE_VALUE: {
+                uint8_t indexIndex = READ_BYTE(vm);
+                uint8_t valueIndex = READ_BYTE(vm);
+                Value* indexValue = &vm->stack[indexIndex];
+                Value* valueValue = &vm->stack[valueIndex];
+
+                Value* oldIndex = peekptr(vm, 0);
+                Value valArray = peek(vm, 1);
+
+                if (!CHECK_ARRAY(valArray)) {
+                    runtimeError(vm, "Expected an array for iteration value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                int newIndex = AS_NUMBER(*oldIndex) + 1;
+                ObjArray* array = AS_ARRAY(valArray);
+
+                // Check if the index outnumbers the element count 
+                if (AS_NUMBER(*oldIndex) + 1 > array->array.count - 1) {
+                    // We cannot continue the iteration 
+                    push(vm, NATIVE_TO_BOOLEAN(false));
+                } else {
+                    // Push the new index value 
+                    *oldIndex = NATIVE_TO_NUMBER(newIndex);                    
+                    // We can continue the iteration
+                    push(vm, NATIVE_TO_BOOLEAN(true));
+                    // Update the index variable 
+                    *indexValue = NATIVE_TO_NUMBER(newIndex);
+                    // Update the value variable 
+                    *valueValue = array->array.values[newIndex];
+                }
+
+                break;
+                
+            }
+            case OP_ITERATE_NUM: {
+                uint8_t indexIndex = READ_BYTE(vm);
+                
+                Value* indexValue = &vm->stack[indexIndex];
+                Value incrementHolder = peek(vm, 0);
+                Value stopHolder = peek(vm, 1);
+                Value* startHolder = peekptr(vm, 2);
+                Value startHolderV = *startHolder;
+
+                if (!CHECK_NUMBER(startHolderV)) {
+                    runtimeError(vm, "Start Value in numeric for loop is expected to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(stopHolder)) {
+                    runtimeError(vm, "Stop value in numeric for loop is expected to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(incrementHolder)) {
+                    runtimeError(vm, "Increment value in numeric for loop is expected to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+               
+                if (AS_NUMBER(incrementHolder) == 0) {
+                    runtimeError(vm, "Increment Value is 0");
+
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (AS_NUMBER(startHolderV) <= AS_NUMBER(stopHolder) && AS_NUMBER(incrementHolder) > 0) {
+                    push(vm, NATIVE_TO_BOOLEAN(true));
+                } else if (AS_NUMBER(startHolderV) >= AS_NUMBER(stopHolder) && AS_NUMBER(incrementHolder) < 0) {
+                    push(vm, NATIVE_TO_BOOLEAN(true));
+                } else {
+                    push(vm, NATIVE_TO_BOOLEAN(false));
+                }
+                
+                *indexValue = startHolderV;         // Assign old value of start 
+                // Increment start
+                *startHolder = NATIVE_TO_NUMBER(AS_NUMBER(startHolderV) + AS_NUMBER(incrementHolder));
                 break;
             }
             case OP_ARRAY: {
@@ -229,6 +343,46 @@ static InterpretResult run(VM* vm) {
                 }
 
                 push(vm, array->array.values[(int)numIndex]);
+                break;
+            
+            }
+            case OP_ARRAY_RANGE: {
+                Value increment = pop(vm);
+                Value stop = pop(vm); 
+                Value start = pop(vm); 
+                Value arrayValue = peek(vm, 0);
+
+                if (!CHECK_NUMBER(increment)) {
+                    runtimeError(vm, "Expected increment to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                if (AS_NUMBER(increment) == 0) {
+                    runtimeError(vm, "Increment is 0");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(start)) {
+                    runtimeError(vm, "Expected start to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (!CHECK_NUMBER(stop)) {
+                    runtimeError(vm, "Expected stop to be a number");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                
+                if (AS_NUMBER(increment) > 0) {
+                    for (double v = AS_NUMBER(start); v <= AS_NUMBER(stop); v += AS_NUMBER(increment)) {
+                        writeValueArray(&AS_ARRAY(arrayValue)->array, NATIVE_TO_NUMBER(v));
+                    }
+                } else if (AS_NUMBER(increment) < 0) {
+                    for (double v = AS_NUMBER(start); v >= AS_NUMBER(stop); v += AS_NUMBER(increment)) {
+                        writeValueArray(&AS_ARRAY(arrayValue)->array, NATIVE_TO_NUMBER(v));
+                    }
+                }
+
                 break;
             }
             case OP_JMP: {

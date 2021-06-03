@@ -16,6 +16,17 @@ int simpleInstruction(const char* insName, int offset) {
     return offset + 1;
 }
 
+int iterateInstruction(Chunk* chunk, int offset) {
+    printf("%-16s %4d\n", "ITERATE", chunk->code[offset + 1]);
+    return offset + 1;
+}
+
+int iterateValueInstruction(Chunk* chunk, int offset) {
+    printf("%-16s %4d %4d\n", "ITERATE_VALUE", chunk->code[offset + 1], 
+                                               chunk->code[offset + 2]);
+    return offset + 3;
+}
+
 int constantInstruction(const char* insName, Chunk* chunk, int offset) {
     uint8_t constantIndex = chunk->code[offset + 1];
     printf("%-16s %4d '", insName, constantIndex);
@@ -189,6 +200,30 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         }
         case OP_ARRAY_MOD: {
             return simpleInstruction("ARRAY_MOD", offset);
+        }
+        case OP_ARRAY_RANGE: {
+            return simpleInstruction("ARRAY_RANGE", offset);
+        }
+        case OP_ITERATE: {
+            return iterateInstruction(chunk, offset);
+        }
+        case OP_ITERATE_VALUE: {
+            return iterateValueInstruction(chunk, offset);
+        }
+        case OP_ITERATE_NUM: {
+            return localInstruction("ITERATE_NUM", chunk, offset);
+        }
+        case OP_POP: {
+            return simpleInstruction("POP", offset);
+        }
+        case OP_ZERO: {
+            return simpleInstruction("ZERO (emit)", offset);
+        }
+        case OP_MIN1: {
+            return simpleInstruction("MIN1 (emit)", offset);
+        }
+        case OP_PLUS1: {
+            return simpleInstruction("PLUS1 (emit)", offset);
         }
         default:
             printf("Unknown opcode %d\n", instruction); 

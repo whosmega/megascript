@@ -59,7 +59,12 @@ typedef enum {
     OP_JMP_LONG,
     OP_JMP_FALSE_LONG,
     OP_JMP_BACK,
-    OP_JMP_BACK_LONG,                           
+    OP_JMP_BACK_LONG,
+    
+    OP_ZERO,
+    OP_MIN1,
+    OP_PLUS1,
+
     OP_ARRAY,                                   /* push empty array */
     OP_ARRINIT,                                 /* push array with 'n' number of elements 
                                                    popped from stack in order */ 
@@ -69,7 +74,11 @@ typedef enum {
     OP_ARRAY_PINS,                              /* same as above but pops the array */
     OP_ARRAY_MOD,                               /* modify element at the given index */
     OP_ARRAY_GET,                               /* push element at the given index */ 
-
+    OP_ARRAY_RANGE,                             /* Range operation on array */ 
+    OP_ITERATE,                                 /* takes index of index and value local variables 
+                                                   located on the stack, increments the index, and updates the value, pushes true or false to indicate whether to continue or break */ 
+    OP_ITERATE_VALUE,                           /* Index value pair for loops */
+    OP_ITERATE_NUM,                             /* Numerical For loops */
     OP_PRINT,                                   /* printing opcode for debugging only */ 
     OP_EOF                                      /* end of file */
 } OPCODE;                                       /* Enum which defines opcodes */

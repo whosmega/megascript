@@ -138,10 +138,12 @@ static Token scanNumber(Scanner* scanner) {
     }
 
     if (peek(scanner) == '.') {
-        advance(scanner);       /* Consume the decimal point */ 
+        if (peekNext(scanner) != '.') {
+            advance(scanner);       /* Consume the decimal point */ 
         
-        while (isDigit(peek(scanner)) && !isAtEnd(scanner)) {
-            advance(scanner);
+            while (isDigit(peek(scanner)) && !isAtEnd(scanner)) {
+                advance(scanner);
+            }
         }
     }
 
@@ -172,7 +174,14 @@ static Token scanIdentifier(Scanner* scanner) {
             if (type == TOKEN_IDENTIFIER) {
                 if (scanner->current - scanner->start > 1) {
                     switch (scanner->start[1]) {
-                        case 'n': type = checkKeyword(scanner, 2, 6, "herits", TOKEN_INHERITS); break;
+                        case 'n': {
+                            if (scanner->current - scanner->start > 2) {
+                                type = checkKeyword(scanner, 3, 6, "herits", TOKEN_INHERITS);
+                            } else {
+                                type = TOKEN_IN;
+                            }
+                            break;
+                        }
                         case 'm': type = checkKeyword(scanner, 2, 9, "portclass", TOKEN_IMPORTCLASS); break;
                     }
                 }
@@ -197,7 +206,6 @@ static Token scanIdentifier(Scanner* scanner) {
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
                     case 'l': type = checkKeyword(scanner, 2, 3, "ass", TOKEN_CLASS); break;
-                    case 'o': type = checkKeyword(scanner, 2, 6, "ntinue", TOKEN_CONTINUE); break;
                 }
             }
             break;

@@ -49,11 +49,12 @@ static void parsePrintStatement(Scanner* scanner, Parser* parser);
 static void parseWhileStatement(Scanner* scanner, Parser* parser);
 static void parseIfStatement(Scanner* scanner, Parser* parser);
 static void parseBreakStatement(Scanner* scanner, Parser* parser);
-
+static void parseForStatement(Scanner* scanner, Parser* parser);
 
 void initCompiler(Compiler* compiler) { 
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
+    compiler->significantTemps = 0;
 }
 
 void initParser(Parser* parser, Chunk* chunk, Compiler* compiler, VM* vm) {
@@ -481,6 +482,8 @@ static void parseNil(Scanner* scanner, Parser* parser) {
 static void parseArray(Scanner* scanner, Parser* parser) {
     advance(scanner, parser);           /* Consume the '[' */ 
     
+    bool canParseRange = true;
+
     emitByte(parser, OP_ARRAY);         /* Push the array */
     if (match(scanner, parser, TOKEN_SQUARE_CLOSE)) {
         return;
@@ -489,7 +492,27 @@ static void parseArray(Scanner* scanner, Parser* parser) {
     /* Push initial elements */
     do {
         expression(scanner, parser);
-        emitByte(parser, OP_ARRAY_INS);
+
+        if (parser->current.type == TOKEN_RANGE) {
+            if (!canParseRange) {
+                errorAtCurrent(parser, "Unexpected Range Token");
+                break;
+            }
+
+            advance(scanner, parser);
+            expression(scanner, parser);
+
+            if (match(scanner, parser, TOKEN_RANGE)) {
+                expression(scanner, parser);
+            } else {
+                emitByte(parser, OP_PLUS1);
+            }
+            emitByte(parser, OP_ARRAY_RANGE);
+            canParseRange = false;
+        } else {
+            emitByte(parser, OP_ARRAY_INS);
+            canParseRange = true;
+        }
     } while (match(scanner, parser, TOKEN_COMMA) && parser->current.type != TOKEN_EOF);
 
     if (parser->current.type == TOKEN_EOF) {
@@ -636,7 +659,7 @@ static void beginScope(Parser* parser) {
     parser->compiler->scopeDepth++;
 }
 
-static void endScope(Parser* parser) {
+static int endScope(Parser* parser) {
     int count = 0;
     for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
         if (parser->compiler->locals[i].depth != parser->compiler->scopeDepth) break;
@@ -649,31 +672,24 @@ static void endScope(Parser* parser) {
     }
     parser->compiler->scopeDepth--;
 
+    return count;
+
 }
 
 static int resolveLocal(Parser* parser, Token identifier) {
     for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
         Local local = parser->compiler->locals[i];
         if (identifiersEqual(local.identifier, identifier)) {
-            return i;
+            return i + local.significantTemps;
         }
     }
 
     return -1;          /* No local found with the given name */
 }
 
-static bool identifiersEqual(Token id1, Token id2) {
-    if (id1.length != id2.length) return false;
-    return memcmp(id1.start, id2.start, id1.length) == 0;
-}
-
-static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);               // Consume 'var' 
-    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in local declaration");
-    Token identifier = parser->previous;
-
-    if (parser->compiler->localCount >= UINT8_MAX + 1) {
-                errorAt(parser, &identifier, "Cannot contain more than 256 local variables in 1 scope");
+static void addLocal(Parser* parser, Token identifier) {
+    if (parser->compiler->localCount >= UINT8_MAX) {
+                errorAt(parser, &identifier, "Cannot contain more than 255 local variables in 1 scope");
         return;
     }
 
@@ -688,17 +704,11 @@ static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
 
     }
 
-    if (match(scanner, parser, TOKEN_EQUAL)) {
-        expression(scanner, parser);
-    } else {
-        emitByte(parser, OP_NIL);
-    }
-
-    match(scanner, parser, TOKEN_SEMICOLON);
 
     Local local;
     local.depth = parser->compiler->scopeDepth;
     local.identifier = identifier;
+    local.significantTemps = parser->compiler->significantTemps;
 
     parser->compiler->locals[parser->compiler->localCount] = local;
     parser->compiler->localCount++;
@@ -706,6 +716,28 @@ static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
     /* No opcode to define a local because this stack slot where we pushed the value 
      * is the local, the stack slot is reserved for it and the compiler takes account of 
      * which slot each local belongs to using the locals array*/
+
+}
+
+static bool identifiersEqual(Token id1, Token id2) {
+    if (id1.length != id2.length) return false;
+    return memcmp(id1.start, id2.start, id1.length) == 0;
+}
+
+static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);               // Consume 'var' 
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in local declaration");
+    Token identifier = parser->previous;
+
+    if (match(scanner, parser, TOKEN_EQUAL)) {
+        expression(scanner, parser);
+    } else {
+        emitByte(parser, OP_NIL);
+    }
+
+    match(scanner, parser, TOKEN_SEMICOLON);
+    
+    addLocal(parser, identifier);
 }
 
 static void parsePrintStatement(Scanner* scanner, Parser* parser) {
@@ -732,8 +764,6 @@ static void patch(Parser* parser, unsigned int index) {
     uint8_t instruction = currentChunk(parser)->code[index - 1];
     /* Minus one because instructions are base 0, while the actual count is base 1 */
     uint16_t offset = currentChunk(parser)->elem_count - index - 1;
-    
-    if (offset == 0) return;
 
     if (instruction == OP_JMP || instruction == OP_JMP_FALSE) {
         /* 8 bit */ 
@@ -742,6 +772,16 @@ static void patch(Parser* parser, unsigned int index) {
        writeLongByteAt(currentChunk(parser), offset, index, parser->previous.line); 
     } else {
     }
+}
+
+static void patchBreak(Parser* parser, unsigned int index, uint8_t localCount) {
+    /* Takes index of jump instruction and calculates the location of the 
+     * popn operand, then fills it with the appropriate count to pop 
+     * the locals */ 
+
+    unsigned int operand = index - 2; 
+    printf("%u\n", currentChunk(parser)->code[operand]);
+    currentChunk(parser)->code[operand] = localCount;
 }
 
 static void emitJumpBack(Parser* parser, unsigned int index) {
@@ -870,7 +910,7 @@ static void parseWhileStatement(Scanner* scanner, Parser* parser) {
         statement(scanner, parser);
     }
      
-    endScope(parser);
+    int vars = endScope(parser);
     emitJumpBack(parser, index);
     patch(parser, falseIndex);
 
@@ -883,8 +923,11 @@ static void parseWhileStatement(Scanner* scanner, Parser* parser) {
     parser->unpatchedBreaks = oldBreakArray;
 
     for (unsigned int i = 0; i < newBreakArray.count; i++) {
-        patch(parser, getUintArray(&newBreakArray, i));
+        unsigned int index = getUintArray(&newBreakArray, i);
+        patch(parser, index);
+        patchBreak(parser, index, vars);
     }
+
     
     freeUintArray(&newBreakArray);
     ///////////////////////////////////////////////
@@ -896,35 +939,107 @@ static void parseBreak(Scanner* scanner, Parser* parser) {
         errorAtCurrent(parser, "Break outside loop environment");
         return;
     }
-
+    
+    emitBytes(parser, OP_POPN, 0xff);           // Loop will patch this // 
     writeUintArray(parser->unpatchedBreaks, emitJump(parser, OP_JMP, OP_JMP_LONG));
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
-static void parseBlock(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);           // Parse the ':'
+static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentifier) {
+    /* 'start' sig temps should already be pushed, index identifier should
+     * already be a valid local in the outer scope,
+     * compile the stop and increment */ 
+    
+    advance(scanner, parser);           // Consume the ',' 
+    expression(scanner, parser); 
+    
+    if (match(scanner, parser, TOKEN_COMMA)) {
+        expression(scanner, parser);
+    } else {
+        emitByte(parser, OP_PLUS1);
+    }
 
-    /* Enter a new scope */
+    parser->compiler->significantTemps += 3;        /* 'start', 'stop' and 'increment' */ 
+    consume(scanner, parser, TOKEN_COLON, "Expected an ':' in numeric for loop"); 
+
+    // For loop begins
     beginScope(parser);
+    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count;
+    emitBytes(parser, OP_ITERATE_NUM, (uint8_t)resolveLocal(parser, indexIdentifier));
+    unsigned int forLoopJmpIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    
+    while (parser->current.type != TOKEN_END && parser->current.type != TOKEN_EOF) {
+        statement(scanner, parser);
+    }
+    endScope(parser);
+    emitJumpBack(parser, forLoopTopIndex);
+    patch(parser, forLoopJmpIndex);
+    parser->compiler->significantTemps -= 3;
+    emitBytes(parser, OP_POPN, (uint8_t)3);
+    consume(scanner, parser, TOKEN_END, "Expected an 'end' to close numeric for loop");
+    
+}
 
-    while (parser->current.type != TOKEN_END &&
-           parser->current.type != TOKEN_EOF) {
+static void parseForStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);       // Consume the 'for' 
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Index Identifier in for loop");
+    Token indexIdentifier = parser->previous;
+    Token valueIdentifier;
+    bool foundValueId = false; 
+
+    emitByte(parser, OP_NIL);
+    addLocal(parser, indexIdentifier);
+    if (match(scanner, parser, TOKEN_COMMA)) {
+        consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Value Identifier in for loop");
+        foundValueId = true;
+        valueIdentifier = parser->previous;
+        emitByte(parser, OP_NIL);
+        addLocal(parser, valueIdentifier);
+    }
+
+    consume(scanner, parser, TOKEN_IN, "Expected 'in' in for loop");
+    expression(scanner, parser);        // Array              (sig temp)
+
+    if (parser->current.type == TOKEN_COMMA && !foundValueId) {
+        parseNumericFor(scanner, parser, indexIdentifier);
+        return;
+    } 
+
+    emitByte(parser, OP_MIN1);          // Index value holder (sig temp)
+    parser->compiler->significantTemps += 2;
+
+    consume(scanner, parser, TOKEN_COLON, "Expected an ':' in for loop");
+    beginScope(parser);
+    // For loop starts 
+    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count;
+    
+    if (foundValueId) {
+        emitByte(parser, OP_ITERATE_VALUE);
+        emitBytes(parser, 
+                 (uint8_t)resolveLocal(parser, indexIdentifier), 
+                 (uint8_t)resolveLocal(parser, valueIdentifier)
+        );
+    } else {
+        emitByte(parser, OP_ITERATE);
+        emitByte(parser,
+                 (uint8_t)resolveLocal(parser, indexIdentifier)
+        );
+    }
+
+    unsigned int forLoopTopJmp = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    while (parser->current.type != TOKEN_EOF &&
+           parser->current.type != TOKEN_END) {
         
         statement(scanner, parser);
     }
-
-    if (parser->current.type == TOKEN_EOF) {
-        errorAtCurrent(parser, "Unclosed block");
-        return;
-    }
-
-    consume(scanner, parser, TOKEN_END, "Expected an 'end' to close block");
-
-    /* Leave the scope */ 
     endScope(parser);
+    emitJumpBack(parser, forLoopTopIndex);
+
+    patch(parser, forLoopTopJmp);
+    emitBytes(parser, OP_POPN, (uint8_t)2);           // pop the array and indexholder
+    parser->compiler->significantTemps -= 2;
+    consume(scanner, parser, TOKEN_END, "Expected an 'end' to close for loop");
 }
-
-
 
 static void synchronize(Scanner* scanner, Parser* parser) {
     while (parser->current.type != TOKEN_EOF) {
@@ -960,6 +1075,7 @@ static void statement(Scanner* scanner, Parser* parser) {
         case TOKEN_PRINT: parsePrintStatement(scanner, parser); break;
         case TOKEN_BREAK: parseBreak(scanner, parser); break;
         case TOKEN_IDENTIFIER: callStatement(scanner, parser); break;
+        case TOKEN_FOR: parseForStatement(scanner, parser); break;
         default: errorAtCurrent(parser, "Unexpected Token, expected a statement (Syntax Error)");
     }
     if (parser->panicMode) synchronize(scanner, parser);
