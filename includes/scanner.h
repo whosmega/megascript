@@ -22,11 +22,10 @@ typedef enum {
     TOKEN_PLUS_EQUAL, TOKEN_MINUS_EQUAL,
     TOKEN_MUL_EQUAL, TOKEN_DIV_EQUAL,
     TOKEN_POW_EQUAL, TOKEN_MOD_EQUAL,
-    TOKEN_PLUS_PLUS, TOKEN_MINUS_MINUS,
 
     TOKEN_IDENTIFIER, TOKEN_STRING, TOKEN_NUMBER,                                   // [variablename, "hello", 121]
 
-    TOKEN_OR, TOKEN_AND, TOKEN_WHILE, TOKEN_FOR, TOKEN_PRINT,                                   /* [or, and, while, for, false,
+    TOKEN_OR, TOKEN_AND, TOKEN_WHILE, TOKEN_FOR,                                   /* [or, and, while, for, false,
                                                                                        true, if, else, elseif] */
     TOKEN_FALSE, TOKEN_TRUE, TOKEN_IF, TOKEN_ELSE, TOKEN_ELSEIF,
     TOKEN_CLASS, TOKEN_SUPER, TOKEN_SELF, TOKEN_INHERITS, TOKEN_FUNC, TOKEN_END, 

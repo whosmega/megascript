@@ -11,18 +11,13 @@ typedef enum {
     OP_POW,
     OP_NEGATE,
     OP_NOT,
+    OP_LENGTH,
     OP_GREATER,
     OP_GREATER_EQ,
     OP_LESSER,
     OP_LESSER_EQ,
     OP_EQUAL,
     OP_NOT_EQ,
-    OP_INCR_POST,
-    OP_INCR_PRE,
-    OP_DECR_POST,
-    OP_DECR_PRE,
-    OP_AND,
-    OP_OR,
     OP_NIL,
     OP_TRUE,
     OP_FALSE,
@@ -33,7 +28,7 @@ typedef enum {
     OP_DEFINE_LONG_GLOBAL,
     OP_GET_GLOBAL,
     OP_GET_LONG_GLOBAL,
-    OP_ASSIGN_GLOBAL,
+    OP_ASSIGN_GLOBAL, 
     OP_ASSIGN_LONG_GLOBAL,
     OP_PLUS_ASSIGN_GLOBAL,
     OP_PLUS_ASSIGN_LONG_GLOBAL,
@@ -56,10 +51,15 @@ typedef enum {
     OP_POPN,
     OP_JMP,
     OP_JMP_FALSE,
+    OP_JMP_OR,
+    OP_JMP_OR_LONG,
     OP_JMP_LONG,
     OP_JMP_FALSE_LONG,
     OP_JMP_BACK,
     OP_JMP_BACK_LONG,
+    OP_JMP_AND,
+    OP_JMP_AND_LONG,
+
     
     OP_ZERO,
     OP_MIN1,
@@ -73,14 +73,19 @@ typedef enum {
                                                    Doesnt pop off the array */
     OP_ARRAY_PINS,                              /* same as above but pops the array */
     OP_ARRAY_MOD,                               /* modify element at the given index */
+    OP_ARRAY_PLUS_MOD,
+    OP_ARRAY_MIN_MOD,
+    OP_ARRAY_MUL_MOD,
+    OP_ARRAY_DIV_MOD,
+    OP_ARRAY_POW_MOD,
     OP_ARRAY_GET,                               /* push element at the given index */ 
     OP_ARRAY_RANGE,                             /* Range operation on array */ 
     OP_ITERATE,                                 /* takes index of index and value local variables 
                                                    located on the stack, increments the index, and updates the value, pushes true or false to indicate whether to continue or break */ 
     OP_ITERATE_VALUE,                           /* Index value pair for loops */
     OP_ITERATE_NUM,                             /* Numerical For loops */
-    OP_PRINT,                                   /* printing opcode for debugging only */ 
-    OP_EOF                                      /* end of file */
+    OP_CALL,                                    /* Call a function */
+    OP_RETEOF
 } OPCODE;                                       /* Enum which defines opcodes */
 
 typedef struct {

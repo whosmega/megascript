@@ -4,11 +4,21 @@
 #include "../includes/table.h"
 #include "../includes/chunk.h"
 #include <stdint.h>
-#define STACK_MAX 256
+#define LVAR_MAX 256
+#define FRAME_MAX 256
+#define STACK_MAX LVAR_MAX * FRAME_MAX
 
 typedef struct {
-    Chunk* chunk;       /* Chunk to be executed */
-    uint8_t* ip;        /* Instruction Pointer */
+    ObjFunction* function;
+    uint8_t* ip;
+    Value* slotPtr;
+    uint8_t expectedReturns;
+} CallFrame;
+
+typedef struct {
+    CallFrame frames[FRAME_MAX];
+    int frameCount;
+    int stackSize;
     Value stack[STACK_MAX]; /* Stack */
     Value* stackTop;
     Table strings;          /* Used for string interning */
@@ -24,9 +34,22 @@ typedef enum {
 } InterpretResult;      /* Different result enums returned when interpreting */
 
 void initVM(VM* vm);
-void loadChunk(VM* vm, Chunk* chunk);
 void freeVM(VM* vm);
-InterpretResult interpret(VM* vm);
+InterpretResult interpret(VM* vm, ObjFunction* function);
 void resetStack(VM* vm);
+
+/*          API             */ 
+void msapi_runtimeError(VM* vm, const char* format, ...); 
+bool msapi_pushCallFrame(VM* vm, ObjFunction* function);
+void msapi_popCallFrame(VM* vm);
+bool msapi_isFalsey(Value value);
+bool msapi_isEqual(Value value1, Value value2);
+void msapi_push(VM* vm, Value value);
+Value msapi_pop(VM* vm);
+Value msapi_peek(VM* vm, unsigned int index);
+Value* msapi_peekptr(VM* vm, unsigned int index);
+void msapi_pushn(VM* vm, Value value, unsigned int count);
+void msapi_popn(VM* vm, unsigned int count); 
+
 
 #endif

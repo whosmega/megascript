@@ -221,7 +221,6 @@ static Token scanIdentifier(Scanner* scanner) {
         case 'r': type = checkKeyword(scanner, 1, 5, "eturn", TOKEN_RETURN); break;
         case 'n': type = checkKeyword(scanner, 1, 2, "il", TOKEN_NIL); break;
         case 'g': type = checkKeyword(scanner, 1, 5, "lobal", TOKEN_GLOBAL); break;
-        case 'p': type = checkKeyword(scanner, 1, 4, "rint", TOKEN_PRINT); break;
    }
 
    return makeToken(scanner, type);
@@ -255,12 +254,10 @@ Token scanToken(Scanner* scanner) {
             match(scanner, '.') ? (match(scanner, '.') ? TOKEN_VAR_ARGS : TOKEN_RANGE) : TOKEN_DOT
         );
         case '+': return makeToken(scanner, 
-            match(scanner, '=') ? TOKEN_PLUS_EQUAL : 
-            match(scanner, '+') ? TOKEN_PLUS_PLUS : TOKEN_PLUS
+            match(scanner, '=') ? TOKEN_PLUS_EQUAL : TOKEN_PLUS
         );
         case '-': return makeToken(scanner, 
-            match(scanner, '=') ? TOKEN_MINUS_EQUAL :
-            match(scanner, '-') ? TOKEN_MINUS_MINUS : TOKEN_MINUS
+            match(scanner, '=') ? TOKEN_MINUS_EQUAL : TOKEN_MINUS
         );
         case '*': return makeToken(scanner, 
             match(scanner, '=') ? TOKEN_MUL_EQUAL : TOKEN_ASTERISK

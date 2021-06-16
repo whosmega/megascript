@@ -14,6 +14,8 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type);
 static void callStatement(Scanner* scanner, Parser* parser);
 static void statement(Scanner* scanner, Parser* parser);
 static void expression(Scanner* scanner, Parser* parser);
+static void and(Scanner* scanner, Parser* parser);
+static void or(Scanner* scanner, Parser* parser);
 static void equality(Scanner* scanner, Parser* parser);
 static void comparison(Scanner* scanner, Parser* parser);
 static void term(Scanner* scanner, Parser* parser);
@@ -35,35 +37,37 @@ static void parseGrouping(Scanner* scanner, Parser* parser);
 static void parseGlobalDeclaration(Scanner* scanner, Parser* parser); 
 static void parseVariableDeclaration(Scanner* scanner, Parser* parser);
 static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, uint8_t longins);
-static void parseAssign(Scanner* scanner, Parser* parser);
-static void parsePlusAssign(Scanner* scanner, Parser* parser);
-static void parseMinusAssign(Scanner* scanner, Parser* parser);
-static void parseMulAssign(Scanner* scanner, Parser* parser);
-static void parseDivAssign(Scanner* scanner, Parser* parser);
-static void parsePowAssign(Scanner* scanner, Parser* parser);
 static void parseBlock(Scanner* scanner, Parser* parser);
 static void parseLocalDeclaration(Scanner* scanner, Parser* parser);
 static bool identifiersEqual(Token id1, Token id2);
 static int resolveLocal(Parser* parser, Token identifier);
-static void parsePrintStatement(Scanner* scanner, Parser* parser);
 static void parseWhileStatement(Scanner* scanner, Parser* parser);
 static void parseIfStatement(Scanner* scanner, Parser* parser);
 static void parseBreakStatement(Scanner* scanner, Parser* parser);
 static void parseForStatement(Scanner* scanner, Parser* parser);
+static void endCompiler(Compiler* compiler, Parser* parser, uint8_t ins);
+static void patchMisc(Parser* parser, unsigned int index, uint8_t value); 
+static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag); 
+static void beginScope(Parser* parser);
+static int endScope(Parser* parser);
 
-void initCompiler(Compiler* compiler) { 
+void initCompiler(Compiler* compiler, ObjFunction* function) { 
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->significantTemps = 0;
+    compiler->function = function;
+    compiler->enclosing = NULL;
 }
 
-void initParser(Parser* parser, Chunk* chunk, Compiler* compiler, VM* vm) {
-    UintArray unpatchedBreaks;
+void setCompiler(Compiler* compiler, Parser* parser) {
+    compiler->enclosing = parser->compiler;
+    parser->compiler = compiler;
+}
 
+void initParser(Parser* parser, Compiler* compiler, VM* vm) {
     parser->hadError = false;
     parser->panicMode = false;
     parser->vm = vm;
-    parser->compilingChunk = chunk;
     parser->compiler = compiler;
     parser->unpatchedBreaks = NULL;
 }
@@ -155,7 +159,7 @@ static void consume(Scanner* scanner, Parser* parser, TokenType type, const char
 }
 
 static Chunk* currentChunk(Parser* parser) {
-    return parser->compilingChunk;
+    return &parser->compiler->function->chunk;
 }
 
 static void emitByte(Parser* parser, uint8_t byte) {
@@ -178,6 +182,57 @@ static void emitLongOperand(Parser* parser, uint16_t op, uint8_t ins1, uint8_t i
     }
 }
 
+static unsigned int emitJump(Parser* parser, uint8_t ins1, uint8_t ins2) {
+    unsigned int index = currentChunk(parser)->elem_count + 1;
+    
+    if ((index - 1) <= UINT8_MAX) {
+        emitBytes(parser, ins1, 0xff);
+    } else {
+        emitLongOperand(parser, 0xffff, ins2, ins2);
+    }
+
+    return index;
+}
+
+static void patchMisc(Parser* parser, unsigned int index, uint8_t value) {
+    currentChunk(parser)->code[index] = value;
+}
+
+static void patch(Parser* parser, unsigned int index) {
+    /* Takes index of the jump instruction, and patches it to the current location */
+    uint8_t instruction = currentChunk(parser)->code[index - 1];
+    /* Minus one because instructions are base 0, while the actual count is base 1 */
+    uint16_t offset = currentChunk(parser)->elem_count - index - 1;
+
+    if (instruction == OP_JMP || instruction == OP_JMP_FALSE || instruction == OP_JMP_AND
+        || instruction == OP_JMP_OR) {
+        /* 8 bit */ 
+        currentChunk(parser)->code[index] = (uint8_t)offset;
+    } else if (instruction == OP_JMP_LONG || instruction == OP_JMP_FALSE_LONG || instruction == OP_JMP_AND_LONG || instruction == OP_JMP_OR_LONG) {
+       writeLongByteAt(currentChunk(parser), offset, index, parser->previous.line); 
+    }
+}
+
+static void patchBreak(Parser* parser, unsigned int index, uint8_t localCount) {
+    /* Takes index of jump instruction and calculates the location of the 
+     * popn operand, then fills it with the appropriate count to pop 
+     * the locals */ 
+
+    unsigned int operand = index - 2; 
+    printf("%u\n", currentChunk(parser)->code[operand]);
+    currentChunk(parser)->code[operand] = localCount;
+}
+
+static void emitJumpBack(Parser* parser, unsigned int index) {
+
+    /* Compiles a jump instruction that jumps back to the given index */
+
+    uint16_t offset = currentChunk(parser)->elem_count - index + 2;
+    emitLongOperand(parser, offset, OP_JMP_BACK, OP_JMP_BACK_LONG); 
+}
+
+
+
 static void checkBadExpression(Scanner* scanner, Parser* parser) {
     /* If next token is a primary after a full operator
      * sequence, report an error */
@@ -191,7 +246,29 @@ static void checkBadExpression(Scanner* scanner, Parser* parser) {
 static void expression(Scanner* scanner, Parser* parser) {
     /* if (!checkPrimary(scanner, parser)) return;          If we dont find a primary expression, 
                                                            we arent going to be parsing any significant ex */
-    equality(scanner, parser);
+    or(scanner, parser);
+}
+
+static void or(Scanner* scanner, Parser* parser) {
+    and(scanner, parser);
+
+    while (parser->current.type == TOKEN_OR) {
+        advance(scanner, parser);
+        int jumpIndex = emitJump(parser, OP_JMP_OR, OP_JMP_OR_LONG); 
+        and(scanner, parser);
+        patch(parser, jumpIndex);
+    }
+}
+
+static void and(Scanner* scanner, Parser* parser) {
+    equality(scanner, parser); 
+
+    while (parser->current.type == TOKEN_AND) {
+        advance(scanner, parser);
+        int jumpIndex = emitJump(parser, OP_JMP_AND, OP_JMP_AND_LONG);
+        equality(scanner, parser);
+        patch(parser, jumpIndex);
+    }
 }
 
 static void equality(Scanner* scanner, Parser* parser) {
@@ -321,7 +398,8 @@ static void highestBinary(Scanner* scanner, Parser* parser) {
 
 static void unary(Scanner* scanner, Parser* parser) {
     if (match(scanner, parser, TOKEN_BANG) ||
-        match(scanner, parser, TOKEN_MINUS)) {
+        match(scanner, parser, TOKEN_MINUS)||
+        match(scanner, parser, TOKEN_HASH)) {
         TokenType type = parser->previous.type;
         call(scanner, parser);
         switch (type) {
@@ -330,6 +408,9 @@ static void unary(Scanner* scanner, Parser* parser) {
                 break;
             case TOKEN_MINUS:
                 emitByte(parser, OP_NEGATE);
+                break;
+            case TOKEN_HASH:
+                emitByte(parser, OP_LENGTH);
                 break;
             default:
                 return;
@@ -347,13 +428,42 @@ static void parseArrayIndex(Scanner* scanner, Parser* parser) {
     consume(scanner, parser, TOKEN_SQUARE_CLOSE, "Expected a ']' after array index");
 }
 
+static int parseFunctionArguments(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    int arity = 0;
+    if (parser->current.type != TOKEN_ROUND_CLOSE) {
+        do {
+             expression(scanner, parser);
+             arity++;
+        } while (match(scanner, parser, TOKEN_COMMA));
+    }
+    consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected an ')' while parsing arguments");
+    if (arity > LVAR_MAX) {
+        error(parser, "Cannot have more than 256 arguments");
+    }
+    return arity;
+}
+
 static void parseDirectCallSequence(Scanner* scanner, Parser* parser) { 
+    // Used when evaluating expressions as opposed to assigmen t
+    if (parser->previous.type == TOKEN_END) {
+        errorAtCurrent(parser, "Unexpected Call");
+        return;
+    }
     switch (parser->current.type) {
         case TOKEN_SQUARE_OPEN:
-            // Parses [exp][exp][exp]...
+            // Parses [exp]
             parseArrayIndex(scanner, parser);
             emitByte(parser, OP_ARRAY_GET);
             parseDirectCallSequence(scanner, parser);
+            break;
+        case TOKEN_ROUND_OPEN: {
+            uint8_t arity = (uint8_t)parseFunctionArguments(scanner, parser);
+            emitBytes(parser, OP_CALL, arity);
+            emitByte(parser, 1);                // 1 expected return 
+            parseDirectCallSequence(scanner, parser);
+            break;
+        }
         default: break;
     }
 }
@@ -362,13 +472,16 @@ static bool checkCall(Scanner* scanner, Parser* parser) {
     switch (parser->current.type) {
         case TOKEN_SQUARE_OPEN:
             return true;
+        case TOKEN_ROUND_OPEN:
+            return true;
         default: return false;
     }
 
     /* Need to add more later */
+
 }
 
-static int parseCallSequenceField(Scanner* scanner, Parser* parser) {
+static int parseCallSequenceField(Scanner* scanner, Parser* parser, unsigned int expectedReturns) {
     /* This function parses all the calls normally, it parses the last one too but 
      * instead of emitting an instruction, it returns the type of the call */ 
     
@@ -377,12 +490,30 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser) {
             parseArrayIndex(scanner, parser);
             if (checkCall(scanner, parser)) {
                 emitByte(parser, OP_ARRAY_GET);
-                return parseCallSequenceField(scanner, parser);
+                return parseCallSequenceField(scanner, parser, expectedReturns);
             } else {
                 /* We've reached the end, this is the target */
                 return CALL_ARRAY;
             }
 
+        }
+        case TOKEN_ROUND_OPEN: {
+            /* In case of an invokcation call, we always parse it 
+             * no matter what, we return CALL_FUNC to notify this cannot be an 
+             * assignment */
+
+            uint8_t arity = (uint8_t)parseFunctionArguments(scanner, parser);
+            emitByte(parser, OP_CALL);
+            emitBytes(parser, arity, 0xff);      // Arity, Expected Returns
+            int expectedReturnIndex = currentChunk(parser)->elem_count - 1; 
+            
+            if (checkCall(scanner, parser)) {
+                patchMisc(parser, expectedReturnIndex, 1);
+                return parseCallSequenceField(scanner, parser, expectedReturns);
+            } else {
+                patchMisc(parser, expectedReturnIndex, (uint8_t)expectedReturns);
+                return CALL_FUNC;
+            }
         }
         /* We cant find a valueable token after consuming the identifier
          * so we return CALL_NONE to assume it was standalone*/
@@ -391,17 +522,12 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser) {
 }
 
 static void call(Scanner* scanner, Parser* parser) {
-    if (parser->current.type == TOKEN_IDENTIFIER) {
-        primary(scanner, parser); 
-        
-        if (parser->current.type == TOKEN_SQUARE_OPEN) {
-            parseDirectCallSequence(scanner, parser);
-        }
-
-        return;
-    }
-
     primary(scanner, parser);
+
+    if (checkCall(scanner, parser)) {
+        parseDirectCallSequence(scanner, parser);
+    }
+   
 }
 
 static void primary(Scanner* scanner, Parser* parser) {
@@ -435,6 +561,31 @@ static void primary(Scanner* scanner, Parser* parser) {
         case TOKEN_SQUARE_OPEN:
             parseArray(scanner, parser);
             break;
+        case TOKEN_FUNC: 
+            advance(scanner, parser);
+            ObjFunction* func = newFunction(parser->vm, "function", 0);
+            Compiler compiler;
+            initCompiler(&compiler, func);
+            setCompiler(&compiler, parser); 
+            compiler.function = func;
+            
+            beginScope(parser);
+            bool variadic = false;
+            int arity = parseParameters(scanner, parser, &variadic);
+            consume(scanner, parser, TOKEN_COLON, "Expected a ':' in anonymous function declaration");
+            func->arity = arity;
+            func->variadic = variadic;
+            
+            while (parser->current.type != TOKEN_EOF &&
+                   parser->current.type != TOKEN_END) {
+                statement(scanner, parser);
+            }
+            
+            consume(scanner, parser, TOKEN_END, "Expected an 'end' to close anonymous function declaration");
+            endCompiler(&compiler, parser, OP_RET);
+            int constant = makeConstant(currentChunk(parser), OBJ(func));
+            emitLongOperand(parser, (uint16_t)constant, OP_CONST, OP_CONST_LONG);
+            break;
         default: return;
     }
 }
@@ -451,6 +602,7 @@ static bool checkPrimary(Scanner* scanner, Parser* parser) {
         /* unaries */
         case TOKEN_MINUS:
         case TOKEN_BANG:
+        case TOKEN_FUNC:
         case TOKEN_SQUARE_OPEN:
             return true;
         default: return false;
@@ -561,100 +713,6 @@ static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
-static void parseAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-    advance(scanner, parser);
-    expression(scanner, parser);
-    
-    int localIndex = resolveLocal(parser, identifier);
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_ASSIGN_GLOBAL, OP_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parsePlusAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-    advance(scanner, parser);           // Consume operator 
-    expression(scanner, parser);
-
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_PLUS_ASSIGN_GLOBAL, OP_PLUS_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_PLUS_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parseMinusAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-    advance(scanner, parser);
-    expression(scanner, parser);
-
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_SUB_ASSIGN_GLOBAL, OP_SUB_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_MINUS_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parseMulAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-    advance(scanner, parser);
-    expression(scanner, parser);
-
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_MUL_ASSIGN_GLOBAL, OP_MUL_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_MUL_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parseDivAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-
-    advance(scanner, parser);
-    expression(scanner, parser);
-
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_DIV_ASSIGN_GLOBAL, OP_DIV_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_DIV_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parsePowAssign(Scanner* scanner, Parser* parser) {
-    Token identifier = parser->previous;
-
-    advance(scanner, parser);
-    expression(scanner, parser);
-
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_POW_ASSIGN_GLOBAL, OP_POW_ASSIGN_LONG_GLOBAL);
-    } else {
-        emitBytes(parser, OP_POW_ASSIGN_LOCAL, (uint8_t)localIndex);
-    }
-}
-
-static void parseArrayAssign(Scanner* scanner, Parser* parser) {
-    /* Array and index should already be on the stack, so parse the value 
-     * followed by the array modification instruction */ 
-
-    advance(scanner, parser);       /* consume the '=' */ 
-    expression(scanner, parser);
-    emitByte(parser, OP_ARRAY_MOD);
-}
-
 static void beginScope(Parser* parser) {
     parser->compiler->scopeDepth++;
 }
@@ -689,7 +747,7 @@ static int resolveLocal(Parser* parser, Token identifier) {
 
 static void addLocal(Parser* parser, Token identifier) {
     if (parser->compiler->localCount >= UINT8_MAX) {
-                errorAt(parser, &identifier, "Cannot contain more than 255 local variables in 1 scope");
+                errorAt(parser, &identifier, "Cannot contain more than 256 local variables in 1 function");
         return;
     }
 
@@ -740,56 +798,100 @@ static void parseLocalDeclaration(Scanner* scanner, Parser* parser) {
     addLocal(parser, identifier);
 }
 
-static void parsePrintStatement(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);
-    expression(scanner, parser);
-    emitByte(parser, OP_PRINT);
-    match(scanner, parser, TOKEN_SEMICOLON);
-}
+static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag) {
+    consume(scanner, parser, TOKEN_ROUND_OPEN, "Expected Identifier in function declaration");
+    int arity = 0;
+    if (parser->current.type == TOKEN_IDENTIFIER) {
+        do {
+            consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier while parsing parameters");
+            Token id = parser->previous;
+            if (parser->current.type == TOKEN_VAR_ARGS) {
+                advance(scanner, parser);
+                *variadicFlag = true;
+                    
+                if (parser->current.type != TOKEN_ROUND_CLOSE) {
+                    error(parser, "No more parameters can proceed a variadic argument");
+                    return 0;
+                }
+                    
+                addLocal(parser, id);
+                break;
+            }
+            addLocal(parser, id);
+            arity++;
+        } while (match(scanner, parser, TOKEN_COMMA));
+    }
 
-static unsigned int emitJump(Parser* parser, uint8_t ins1, uint8_t ins2) {
-    unsigned int index = currentChunk(parser)->elem_count + 1;
+    consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected ')' while parsing parameters");
     
-    if ((index - 1) <= UINT8_MAX) {
-        emitBytes(parser, ins1, 0xff);
-    } else {
-        emitLongOperand(parser, 0xffff, ins2, ins2);
+    if (arity > LVAR_MAX) {
+        error(parser, "Maximum parameter count reached for functions, cannot exceed 256");
     }
 
-    return index;
+    return arity;
 }
 
-static void patch(Parser* parser, unsigned int index) {
-    /* Takes index of the jump instruction, and patches it to the current location */
-    uint8_t instruction = currentChunk(parser)->code[index - 1];
-    /* Minus one because instructions are base 0, while the actual count is base 1 */
-    uint16_t offset = currentChunk(parser)->elem_count - index - 1;
-
-    if (instruction == OP_JMP || instruction == OP_JMP_FALSE) {
-        /* 8 bit */ 
-        currentChunk(parser)->code[index] = (uint8_t)offset;
-    } else if (instruction == OP_JMP_LONG || instruction == OP_JMP_FALSE_LONG) {
-       writeLongByteAt(currentChunk(parser), offset, index, parser->previous.line); 
+static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);               // Consume the 'func' 
+    if (parser->current.type != TOKEN_IDENTIFIER) {
+        errorAtCurrent(parser, "Expected Identifier in function declaration");
+        return;
     } else {
+        advance(scanner, parser);
     }
+    Token identifier = parser->previous;
+     
+    ObjFunction* function = newFunctionFromSource(parser->vm, identifier.start, identifier.length, 0);
+    Compiler compiler;
+    initCompiler(&compiler, function);
+    setCompiler(&compiler, parser);
+    beginScope(parser);
+    bool variadic = false;
+    int arity = parseParameters(scanner, parser, &variadic);
+
+    function->variadic = variadic;
+
+    function->arity = arity;
+    consume(scanner, parser, TOKEN_COLON, "Expected ':' in function declaration");
+    
+    while (parser->current.type != TOKEN_EOF &&
+            parser->current.type != TOKEN_END) {
+        statement(scanner, parser);
+    }
+    consume(scanner, parser, TOKEN_END, "Expected an 'end' to close function declaration");
+    endCompiler(&compiler, parser, OP_RET);
+    int constant = makeConstant(currentChunk(parser), OBJ(function));
+    emitLongOperand(parser, (uint16_t)constant, OP_CONST, OP_CONST_LONG);
+    addLocal(parser, identifier);
 }
 
-static void patchBreak(Parser* parser, unsigned int index, uint8_t localCount) {
-    /* Takes index of jump instruction and calculates the location of the 
-     * popn operand, then fills it with the appropriate count to pop 
-     * the locals */ 
+static void parseReturnStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // consume the return; 
+    int numReturns = 1;
 
-    unsigned int operand = index - 2; 
-    printf("%u\n", currentChunk(parser)->code[operand]);
-    currentChunk(parser)->code[operand] = localCount;
-}
+    if (parser->compiler->enclosing == NULL) {
+        // Returns cannot take place in the outermost scope 
+        error(parser, "Cannot use return in the outermost scope");
+        return;
+    }
 
-static void emitJumpBack(Parser* parser, unsigned int index) {
+    if (checkPrimary(scanner, parser)) {
+        expression(scanner, parser);
+        while (match(scanner, parser, TOKEN_COMMA)) {
+            expression(scanner, parser);
+            numReturns++;
+        }
+    } else {
+        emitByte(parser, OP_NIL);
+    }
+   
+    if (numReturns > LVAR_MAX) {
+        error(parser, "Cannot return more than 256 values");
+    }
+    
+    emitBytes(parser, OP_RET, (uint8_t)numReturns);
 
-    /* Compiles a jump instruction that jumps back to the given index */
-
-    uint16_t offset = currentChunk(parser)->elem_count - index + 2;
-    emitLongOperand(parser, offset, OP_JMP_BACK, OP_JMP_BACK_LONG); 
+    match(scanner, parser, TOKEN_SEMICOLON);
 }
 
 static void parseIfStatement(Scanner* scanner, Parser* parser) {
@@ -976,11 +1078,13 @@ static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentif
     patch(parser, forLoopJmpIndex);
     parser->compiler->significantTemps -= 3;
     emitBytes(parser, OP_POPN, (uint8_t)3);
+    endScope(parser);
     consume(scanner, parser, TOKEN_END, "Expected an 'end' to close numeric for loop");
     
 }
 
 static void parseForStatement(Scanner* scanner, Parser* parser) {
+    beginScope(parser);
     advance(scanner, parser);       // Consume the 'for' 
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Index Identifier in for loop");
     Token indexIdentifier = parser->previous;
@@ -1038,6 +1142,7 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
     patch(parser, forLoopTopJmp);
     emitBytes(parser, OP_POPN, (uint8_t)2);           // pop the array and indexholder
     parser->compiler->significantTemps -= 2;
+    endScope(parser);
     consume(scanner, parser, TOKEN_END, "Expected an 'end' to close for loop");
 }
 
@@ -1070,12 +1175,13 @@ static void statement(Scanner* scanner, Parser* parser) {
     switch (parser->current.type) {
         case TOKEN_GLOBAL: parseGlobalDeclaration(scanner, parser); break;
         case TOKEN_VAR: parseLocalDeclaration(scanner, parser); break;
+        case TOKEN_FUNC: parseFunctionDeclaration(scanner, parser); break;
         case TOKEN_IF: parseIfStatement(scanner, parser); break;
         case TOKEN_WHILE: parseWhileStatement(scanner, parser); break;
-        case TOKEN_PRINT: parsePrintStatement(scanner, parser); break;
         case TOKEN_BREAK: parseBreak(scanner, parser); break;
         case TOKEN_IDENTIFIER: callStatement(scanner, parser); break;
         case TOKEN_FOR: parseForStatement(scanner, parser); break;
+        case TOKEN_RETURN: parseReturnStatement(scanner, parser); break;
         default: errorAtCurrent(parser, "Unexpected Token, expected a statement (Syntax Error)");
     }
     if (parser->panicMode) synchronize(scanner, parser);
@@ -1091,15 +1197,16 @@ static void callStatement(Scanner* scanner, Parser* parser) {
 
     if (checkCall(scanner, parser)) {
         /* Call sequences guranteed 
-         * since standalone identifiers are compiled by the assignment functions, while 
+ ﻿        * since standalone identifiers are compiled by the assignment functions, while 
          * indexing and calling need to evaluate that identifier into a value before 
          * continuing, we parse it right before starting to parse the call / indexing*/
         parseReadIdentifier(scanner, parser, identifier);
-        type = parseCallSequenceField(scanner, parser);
+        type = parseCallSequenceField(scanner, parser, 0); // 0 return values expected
         if (type == CALL_FUNC) {
             /* do function / class calling stuff 
-             * Not a valid assignment target */ 
-
+             * Not a valid assignment target 
+             * (we already parsed the function call)*/ 
+            match(scanner, parser, TOKEN_SEMICOLON);
             return;
         }
     }
@@ -1110,68 +1217,116 @@ static void callStatement(Scanner* scanner, Parser* parser) {
 }
 
 static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
+    // first value has already been parsed unless its a raw  identifier 
+    Token id = parser->previous;
+    // we save the operator and parse the value to be assigned 
+
+    Token operator = parser->current;
+    advance(scanner, parser);
+
+    expression(scanner, parser);
+    
+    int global1 = -1;
+    int global2 = -1;
+    int local1 = -1;
+    int array1 = -1;
+
+    switch (operator.type) {
+        case TOKEN_EQUAL:
+            local1 = OP_ASSIGN_LOCAL;
+            global1 = OP_ASSIGN_GLOBAL;
+            global2 = OP_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_MOD;
+            break;
+        case TOKEN_PLUS_EQUAL:
+            local1 = OP_PLUS_ASSIGN_LOCAL;
+            global1 = OP_PLUS_ASSIGN_GLOBAL;
+            global2 = OP_PLUS_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_PLUS_MOD;
+            break;
+        case TOKEN_MINUS_EQUAL:
+            local1 = OP_MINUS_ASSIGN_LOCAL;
+            global1 = OP_SUB_ASSIGN_GLOBAL;
+            global2 = OP_SUB_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_MIN_MOD;
+            break;
+        case TOKEN_MUL_EQUAL:
+            local1 = OP_MUL_ASSIGN_LOCAL;
+            global1 = OP_MUL_ASSIGN_GLOBAL;
+            global2 = OP_MUL_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_MUL_MOD;
+            break;
+        case TOKEN_DIV_EQUAL:
+            local1 = OP_DIV_ASSIGN_LOCAL;
+            global1 = OP_DIV_ASSIGN_GLOBAL;
+            global2 = OP_DIV_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_DIV_MOD;
+            break;
+        case TOKEN_POW_EQUAL:
+            local1 = OP_POW_ASSIGN_LOCAL;
+            global1 = OP_POW_ASSIGN_GLOBAL;
+            global2 = OP_POW_ASSIGN_LONG_GLOBAL;
+            array1 = OP_ARRAY_POW_MOD;
+            break;
+        default:
+            errorAt(parser, &operator, "Expected assignment operator");
+            return;
+    }
+
     if (type == CALL_NONE) {
-        switch (parser->current.type) {
-            case TOKEN_EQUAL:
-                parseAssign(scanner, parser);
-                break;
-            case TOKEN_PLUS_EQUAL:
-                parsePlusAssign(scanner, parser);
-                break;
-            case TOKEN_MINUS_EQUAL:
-                parseMinusAssign(scanner, parser);
-                break;
-            case TOKEN_MUL_EQUAL:
-                parseMulAssign(scanner, parser);
-                break;
-            case TOKEN_DIV_EQUAL:
-                parseDivAssign(scanner, parser);
-                break;
-            case TOKEN_POW_EQUAL:
-                parsePowAssign(scanner, parser);
-                break;
-            default: 
-                errorAtCurrent(parser, "Expected Assignment, got identifier");
-                break;
+        int localIndex = resolveLocal(parser, id);
+
+        if (localIndex == -1) {
+             parseIdentifier(parser, id, (uint8_t)global1, (uint8_t)global2);        
+        } else {
+            emitBytes(parser, (uint8_t)local1, (uint8_t)localIndex);
         }
     } else if (type == CALL_ARRAY) {
-        switch (parser->current.type) {
-            case TOKEN_EQUAL: {
-                parseArrayAssign(scanner, parser);
-                break;
-            }
-            default:
-                errorAtCurrent(parser, "Expected Assignment, got array index");
-                break;
-        }
+        emitByte(parser, (uint8_t)array1);
     }
+
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
-InterpretResult compile(const char* source, Chunk* chunk, VM* vm) {
+void endCompiler(Compiler* compiler, Parser* parser, uint8_t ins) {
+    if (ins == OP_RET) {
+        emitByte(parser, OP_NIL);           // return nil by default unless theres another return above this one 
+        emitByte(parser, ins);
+        emitByte(parser, 1);                // all user-defined functions have atleast 1 return 
+                                            // value expected 
+    } else {
+        emitByte(parser, ins);
+    }
+
+    if (parser->compiler->enclosing == NULL) return;
+    parser->compiler = parser->compiler->enclosing;
+}
+
+InterpretResult compile(const char* source, VM* vm, ObjFunction* function) {
     Scanner scanner;
     Parser parser;
     Compiler compiler;
 
+    // Init parser already sets the compiler for us
+
     initScanner(&scanner, source);
-    initCompiler(&compiler);
-    initParser(&parser, chunk, &compiler, vm);
+    initCompiler(&compiler, function);
+    initParser(&parser, &compiler, vm);
+
     advance(&scanner, &parser);
-    
     beginScope(&parser);
     while (!match(&scanner, &parser, TOKEN_EOF)) {
         statement(&scanner, &parser);
     }
-    endScope(&parser);
     
+    // endScope(&parser);           // RETEOF resets the stack automatically
     match(&scanner, &parser, TOKEN_EOF);
 
-    emitByte(&parser, OP_EOF);
-
+    endCompiler(&compiler, &parser, OP_RETEOF);
     #ifdef DEBUG_PRINT_BYTECODE
     
     if (!parser.hadError) {
-        dissembleChunk(chunk, "MAIN");
+        dissembleChunk(currentChunk(&parser), function->name->allocated);
     }
     #endif
     /* 

@@ -1,9 +1,6 @@
-var a = 0
+func test():
+    print("Ran")
+    return 1
+end 
 
-while a == 0:
-    var test = 0
-    var test2 = 11
-    var test3 = 111
-
-    break
-end
+print(false and test())

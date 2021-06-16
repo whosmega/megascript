@@ -11,8 +11,10 @@ typedef struct {
     int depth;
 } Local;
 
-typedef struct {
-    Local locals[UINT8_MAX + 1];
+typedef struct Compiler {
+    Local locals[LVAR_MAX];
+    ObjFunction* function;
+    struct Compiler* enclosing;
     int localCount;
     int scopeDepth;
     int significantTemps;
@@ -27,7 +29,6 @@ typedef struct {
 typedef struct {
     Token previous;
     Token current;
-    Chunk* compilingChunk;
     Compiler* compiler;
     UintArray* unpatchedBreaks;
     VM* vm;
@@ -47,9 +48,8 @@ void initUintArray(UintArray* array);
 void writeUintArray(UintArray* array, unsigned int value);
 unsigned int getUintArray(UintArray* array, int index);
 void freeUintArray(UintArray* array);
-
-void initCompiler(Compiler* compiler);
-void initParser(Parser* parser, Chunk* chunk, Compiler* compiler, VM* vm);
-InterpretResult compile(const char* source, Chunk* chunk, VM* vm); 
+void initCompiler(Compiler* compiler, ObjFunction* function);
+void initParser(Parser* parser, Compiler* compiler, VM* vm);
+InterpretResult compile(const char* source, VM* vm, ObjFunction* function); 
 
 #endif

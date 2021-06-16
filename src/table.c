@@ -22,8 +22,10 @@ static Entry* probeEntrySlot(Entry* entries, int capacity, ObjString* key) {
         if (entry->key == NULL) {
             if (!(CHECK_NIL(entry->value))) {
                 // Tombstone
-                tombstone = tombstone == NULL ? entry : tombstone;
+                if (tombstone == NULL) tombstone = entry;
             } else {
+                // truly empty entry / previous tombstone 
+
                 return tombstone == NULL ? entry : tombstone;
             }
         } else if (entry->key == key) {
@@ -34,13 +36,13 @@ static Entry* probeEntrySlot(Entry* entries, int capacity, ObjString* key) {
         /* the entry wasnt empty, so continue the linear search */
         index = (index + 1) % capacity;
     }
+    
 }
 
 static void adjustCapacity(Table* table, int capacity) {
     /* The entries are positioned relative to the older capacity, to make sure 
      * the probe sequence remains problem free and returns the current result
-     * after changing the capacity, they have to be reinserted completely */ 
-    
+     * after changing the capacity, they have to be reinserted completely */  
     Entry* entries = ALLOCATE(Entry, capacity);
     table->count = 0;
     /* Reset all slots back to NULL */ 
@@ -53,7 +55,8 @@ static void adjustCapacity(Table* table, int capacity) {
     for (int i = 0; i < table->capacity; i++) {
         Entry currentEntry = table->entries[i];
         // Discard all non tombstone entries
-        if (currentEntry.key != NULL && CHECK_NIL(currentEntry.value)) {
+        // Only copy real entries 
+        if (currentEntry.key != NULL) {
             Entry* entry = probeEntrySlot(entries, capacity, currentEntry.key);
             entry->key = currentEntry.key;
             entry->value = currentEntry.value;
@@ -77,16 +80,18 @@ bool insertTable(Table* table, ObjString* key, Value value) {
     Value oldValue = entry->value;
     entry->key = key;
     entry->value = value;
-
     if (isNewEntry && CHECK_NIL(oldValue)) table->count++;
     return isNewEntry;
 }
+
 
 bool getTable(Table* table, ObjString* key, Value* value) {
     if (table->count == 0) return false;
     Entry* entry = probeEntrySlot(table->entries, table->capacity, key);
     
-    if (entry->key == NULL) return false;
+    if (entry->key == NULL) { 
+        return false;
+    }
     *value = entry->value;
     return true;
 }

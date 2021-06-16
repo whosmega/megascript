@@ -16,15 +16,14 @@ int simpleInstruction(const char* insName, int offset) {
     return offset + 1;
 }
 
-int iterateInstruction(Chunk* chunk, int offset) {
-    printf("%-16s %4d\n", "ITERATE", chunk->code[offset + 1]);
-    return offset + 1;
+int callInstruction(Chunk* chunk, int offset) {
+    printf("%-16s %4d %4d\n", "CALL", chunk->code[offset + 1], chunk->code[offset + 2]);
+    return offset + 3;
 }
 
-int iterateValueInstruction(Chunk* chunk, int offset) {
-    printf("%-16s %4d %4d\n", "ITERATE_VALUE", chunk->code[offset + 1], 
-                                               chunk->code[offset + 2]);
-    return offset + 3;
+int returnInstruction(Chunk* chunk, int offset) {
+    printf("%-16s %4d\n", "RET", chunk->code[offset + 1]);
+    return offset + 2;
 }
 
 int constantInstruction(const char* insName, Chunk* chunk, int offset) {
@@ -34,6 +33,13 @@ int constantInstruction(const char* insName, Chunk* chunk, int offset) {
     printf("'\n");
     return offset + 2;                                      /* return 2 because it has 1 operand specifying
                                                                the constant index in the constant pool */
+}
+
+int doubleOperandInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint8_t op1 = chunk->code[offset + 1];
+    uint8_t op2 = chunk->code[offset + 2];
+    printf("%-16s %4d %4d\n", insName, op1, op2);
+    return offset + 3;
 }
 
 int jumpInstruction(const char* insName, Chunk* chunk, int offset) {
@@ -71,12 +77,12 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     uint8_t instruction = chunk->code[offset];
 
     switch(instruction) {
-        case OP_EOF:
-            return simpleInstruction("OP_EOF", offset);
-        case OP_PRINT:
-            return simpleInstruction("PRINT", offset);
+        case OP_RETEOF:
+            return simpleInstruction("RETEOF", offset);
+        case OP_CALL:
+            return callInstruction(chunk, offset);
         case OP_RET:
-            return simpleInstruction("OP_RET", offset);
+            return returnInstruction(chunk, offset);
         case OP_CONST:
             return constantInstruction("CONST (emit)", chunk, offset);
         case OP_CONST_LONG:
@@ -97,20 +103,8 @@ int dissembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("TRUE (emit)", offset);
         case OP_FALSE:
             return simpleInstruction("FALSE (emit)", offset);
-        case OP_AND:
-            return simpleInstruction("AND", offset);
-        case OP_OR:
-            return simpleInstruction("OR", offset);
-        case OP_NIL:
-            return simpleInstruction("NIL", offset);
-        case OP_INCR_POST:
-            return simpleInstruction("INCR_POST", offset);
-        case OP_INCR_PRE:
-            return simpleInstruction("INCR_PRE", offset);
-        case OP_DECR_POST:
-            return simpleInstruction("DECR_POST", offset);
-        case OP_DECR_PRE:
-            return simpleInstruction("DECR_PRE", offset);
+        case OP_LENGTH:
+            return simpleInstruction("LENGTH", offset);
         case OP_GREATER:
             return simpleInstruction("GREATER", offset);
         case OP_LESSER:
@@ -177,6 +171,12 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_JMP: {
             return jumpInstruction("JMP", chunk, offset);
         }
+        case OP_JMP_AND: {
+            return jumpInstruction("JMP_AND", chunk, offset);
+        }
+        case OP_JMP_OR: {
+            return jumpInstruction("JMP_OR", chunk, offset);
+        }
         case OP_JMP_FALSE: {
             return jumpInstruction("JMP_FALSE", chunk, offset);
         }
@@ -201,21 +201,29 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_ARRAY_MOD: {
             return simpleInstruction("ARRAY_MOD", offset);
         }
+        case OP_ARRAY_PLUS_MOD: {
+            return localInstruction("ARRAY_PLUS_MOD", chunk, offset);
+        }
+        case OP_ARRAY_MIN_MOD: {
+            return localInstruction("ARRAY_SUB_MOD", chunk, offset);
+        }
+        case OP_ARRAY_MUL_MOD: {
+            return localInstruction("ARRAY_MUL_MOD", chunk, offset);
+        }
+        case OP_ARRAY_DIV_MOD: {
+            return localInstruction("ARRAY_DIV_MOD", chunk, offset);
+        }
+        case OP_ARRAY_POW_MOD: {
+            return localInstruction("ARRAY_POW_MOD", chunk, offset);
+        }
         case OP_ARRAY_RANGE: {
             return simpleInstruction("ARRAY_RANGE", offset);
-        }
-        case OP_ITERATE: {
-            return iterateInstruction(chunk, offset);
-        }
-        case OP_ITERATE_VALUE: {
-            return iterateValueInstruction(chunk, offset);
-        }
-        case OP_ITERATE_NUM: {
-            return localInstruction("ITERATE_NUM", chunk, offset);
         }
         case OP_POP: {
             return simpleInstruction("POP", offset);
         }
+        case OP_NIL:
+            return simpleInstruction("NIL (emit)", offset);
         case OP_ZERO: {
             return simpleInstruction("ZERO (emit)", offset);
         }
@@ -224,6 +232,15 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         }
         case OP_PLUS1: {
             return simpleInstruction("PLUS1 (emit)", offset);
+        }
+        case OP_ITERATE: { 
+            return localInstruction("ITERATE", chunk, offset); 
+        }
+        case OP_ITERATE_VALUE: {
+            return doubleOperandInstruction("ITERATE_VALUE", chunk, offset);
+        }              
+        case OP_ITERATE_NUM: {
+            return localInstruction("ITERATE_NUM", chunk, offset);
         }
         default:
             printf("Unknown opcode %d\n", instruction); 

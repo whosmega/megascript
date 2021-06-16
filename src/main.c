@@ -4,6 +4,7 @@
 #include "../includes/vm.h"
 #include "../includes/compiler.h"
 #include "../includes/table.h"
+#include "../includes/object.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -45,9 +46,8 @@ char* readFile(const char* path) {
     return buffer;
 }
 
-void cleanup(const char* source, Chunk* chunk, VM* vm) {
+void cleanup(const char* source, VM* vm) {
     free((char*)source);
-    freeChunk(chunk);
     freeVM(vm);
 }
 
@@ -55,36 +55,31 @@ void runFile(const char* fileName) {
     char* source = readFile(fileName);
 
     VM vm;
-    Chunk chunk;
-
-    initChunk(&chunk);
     initVM(&vm);
-    InterpretResult result1 = compile(source, &chunk, &vm);
+    ObjFunction* function = newFunction(&vm, "main", 0);
+    InterpretResult result1 = compile(source, &vm, function);
     
     if (result1 == INTERPRET_COMPILE_ERROR) {
-        cleanup(source, &chunk, &vm);
+        cleanup(source, &vm);
         exit(100);
     }
 
-    loadChunk(&vm, &chunk);
-
-    InterpretResult result2 = interpret(&vm);
-    cleanup(source, &chunk, &vm);
+    InterpretResult result2 = interpret(&vm, function);
+    cleanup(source, &vm);
 
     if (result2 == INTERPRET_RUNTIME_ERROR) exit(101);
 }
 
 void repl() {
     char buffer[1024];
-//     printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
-//     printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
+    printf("MegaScript Repl Session Started (type '.exit' to exit)\n");
+    printf("Version : %d.%d\n", V_MAJOR, V_MINOR);
 
     bool ran = false;
     for (;;) {
         VM vm;
-        Chunk chunk;
         initVM(&vm);
-        
+        ObjFunction* function = newFunction(&vm, "mainrepl", 0);
         printf("> ");
         if (!fgets(buffer, sizeof(buffer), stdin)) {
             printf("\n");
@@ -92,20 +87,15 @@ void repl() {
         }
         
         if (memcmp(buffer, ".exit", 5) == 0) {
-            if (ran) {
-                freeChunk(&chunk);
-            }
             freeVM(&vm);
             exit(0);
         }
         ran = true;
-        initChunk(&chunk);
-        InterpretResult result1 = compile(buffer, &chunk, &vm);
-        loadChunk(&vm, &chunk);
+        InterpretResult result1 = compile(buffer, &vm, function);
+        
         if (result1 == INTERPRET_OK) { 
-            InterpretResult result2 = interpret(&vm);
+            InterpretResult result2 = interpret(&vm, function);
         }
-        freeChunk(&chunk);
         freeVM(&vm);
     }
 }

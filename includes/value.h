@@ -18,7 +18,8 @@ typedef enum {
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
 typedef struct ObjArray ObjArray;
-
+typedef struct ObjFunction ObjFunction;
+typedef struct ObjNativeFunction ObjNativeFunction;
 /* - - - - - - - - - - - - - -*/
 
 typedef struct {

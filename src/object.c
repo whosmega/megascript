@@ -103,6 +103,35 @@ ObjArray* allocateArray(VM* vm) {
     return array; 
 }
 
+ObjFunction* allocateFunction(VM* vm, ObjString* name, int arity) {
+    ObjFunction* func = (ObjFunction*)allocateObject(vm, sizeof(*func), OBJ_FUNCTION);
+    func->arity = arity;
+    func->name = name;
+    func->variadic = false;
+    initChunk(&func->chunk);
+
+    return func;
+}
+
+ObjFunction* newFunction(VM* vm, const char* name, int arity) {
+    ObjString* nameObj = allocateString(vm, name, strlen(name));
+    return allocateFunction(vm, nameObj, arity);
+}
+
+ObjFunction* newFunctionFromSource(VM* vm, const char* start, int length, int arity) {
+    ObjString* nameObj = allocateString(vm, start, length);
+    return allocateFunction(vm, nameObj, arity);
+}
+
+ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr funcPtr) {
+    ObjNativeFunction* native = (ObjNativeFunction*)allocateObject(vm, sizeof(*native), OBJ_NATIVE_FUNCTION);
+
+    native->funcPtr = funcPtr;
+    native->name = name;
+
+    return native;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
@@ -111,11 +140,17 @@ void printObject(Value value) {
         case OBJ_ARRAY:
             printf("Array <len:%d>", AS_ARRAY(value)->array.count);
             break;
+        case OBJ_FUNCTION:
+            printf("Function <%s>", AS_FUNCTION(value)->name->allocated);
+            break;
+        case OBJ_NATIVE_FUNCTION:
+            printf("Native Function <%s>", AS_NATIVE_FUNCTION(value)->name->allocated);
+            break;
         default: return;
     }
 }
 
-static void freeObject(Obj* obj) {
+void freeObject(Obj* obj) {
     switch (obj->type) {
         case OBJ_STRING: {
             /* Character array will automatically be freed because its 
@@ -129,6 +164,19 @@ static void freeObject(Obj* obj) {
             ObjArray* arrayObj = (ObjArray*)obj;
             freeValueArray(&arrayObj->array);
             reallocate(arrayObj, sizeof(*arrayObj), 0);
+            break;
+        } 
+        case OBJ_FUNCTION: {
+            /* Free the chunk, and then the pointer */ 
+            // NOTE : The name gets freed individually 
+            ObjFunction* funcObj = (ObjFunction*)obj;
+            freeChunk(&funcObj->chunk);
+            reallocate(funcObj, sizeof(*funcObj), 0);
+            break;
+        }
+        case OBJ_NATIVE_FUNCTION: {
+            ObjNativeFunction* native = (ObjNativeFunction*)obj;
+            reallocate(native, sizeof(*native), 0);
             break;
         }
         default: return;
