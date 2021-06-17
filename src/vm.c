@@ -75,9 +75,7 @@ void resetStack(VM* vm) {
 void msapi_runtimeError(VM* vm, const char* format, ...) {
     va_list args;
     va_start(args, format);
-    fprintf(stderr, "\033[0;31m");
     vfprintf(stderr, format, args);
-    fprintf(stderr, "\033[0m");
     va_end(args);
     fputs("\n", stderr);
     
@@ -85,16 +83,14 @@ void msapi_runtimeError(VM* vm, const char* format, ...) {
     size_t ins = frame->ip - frame->function->chunk.code - 1;
     int line = frame->function->chunk.lines[ins];
     fprintf(stderr, "Line %d: ", line);
-    fprintf(stderr, "\033[0;36m");
-    fprintf(stderr, "In Script");
-    fprintf(stderr, "\033[0m\n");
+    fprintf(stderr, "In Script\n");
 
 
-    printf("\n\033[0;32mCall Stack Traceback:\033[0m\n");
-    printf("In function:\033[0;36m %s\033[0m\n", vm->frames[vm->frameCount - 1].function->name->allocated);
+    printf("\nCall Stack Traceback:\n");
+    printf("In function: %s\n", vm->frames[vm->frameCount - 1].function->name->allocated);
     
-    for (int i = vm->frameCount - 2; i != 0; i--) {
-        printf("Called by:\033[0;36m %s\033[0m\n", vm->frames[i].function->name->allocated);
+    for (int i = vm->frameCount - 2; i >= 0; i--) {
+        printf("Called by: %s\n", vm->frames[i].function->name->allocated);
     }
     resetStack(vm);
 }
