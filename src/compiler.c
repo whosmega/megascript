@@ -40,7 +40,8 @@ static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, u
 static void parseBlock(Scanner* scanner, Parser* parser);
 static void parseLocalDeclaration(Scanner* scanner, Parser* parser);
 static bool identifiersEqual(Token id1, Token id2);
-static int resolveLocal(Parser* parser, Token identifier);
+static int resolveLocal(Compiler* compiler, Token identifier);
+static int resolveUpvalue(Parser* parser, Compiler* compiler, Token identifier);
 static void parseWhileStatement(Scanner* scanner, Parser* parser);
 static void parseIfStatement(Scanner* scanner, Parser* parser);
 static void parseBreakStatement(Scanner* scanner, Parser* parser);
@@ -231,7 +232,12 @@ static void emitJumpBack(Parser* parser, unsigned int index) {
     emitLongOperand(parser, offset, OP_JMP_BACK, OP_JMP_BACK_LONG); 
 }
 
-
+static void emitClosureEncoding(Parser* parser, Compiler* compiler) {
+    for (int i = 0; i < compiler->function->upvalueCount; i++) {
+        emitByte(parser, compiler->upvalues[i].isLocal ? 1 : 0);
+        emitByte(parser, (uint8_t)compiler->upvalues[i].index);
+    }
+}
 
 static void checkBadExpression(Scanner* scanner, Parser* parser) {
     /* If next token is a primary after a full operator
@@ -532,7 +538,7 @@ static void call(Scanner* scanner, Parser* parser) {
 
 static void primary(Scanner* scanner, Parser* parser) {
     if (!checkPrimary(scanner, parser)) {
-        errorAtCurrent(parser, "Expected Expression (Syntax Error)");
+        error(parser, "Expected Expression (Syntax Error)");
         return;
     }
     switch (parser->current.type) {
@@ -584,7 +590,8 @@ static void primary(Scanner* scanner, Parser* parser) {
             consume(scanner, parser, TOKEN_END, "Expected an 'end' to close anonymous function declaration");
             endCompiler(&compiler, parser, OP_RET);
             int constant = makeConstant(currentChunk(parser), OBJ(func));
-            emitLongOperand(parser, (uint16_t)constant, OP_CONST, OP_CONST_LONG);
+            emitLongOperand(parser, (uint16_t)constant, OP_CLOSURE, OP_CLOSURE_LONG);
+            emitClosureEncoding(parser, &compiler);
             break;
         default: return;
     }
@@ -682,14 +689,20 @@ static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, u
 }
 
 static void parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier) {
+    int localIndex = resolveLocal(parser->compiler, identifier);
 
-    int localIndex = resolveLocal(parser, identifier);
-
-    if (localIndex == -1) {
-        parseIdentifier(parser, identifier, OP_GET_GLOBAL, OP_GET_LONG_GLOBAL);
-    } else {
+    if (localIndex != -1) {
         emitBytes(parser, OP_GET_LOCAL, (uint8_t)localIndex);
+        return; 
+    } 
+
+    int upvalueIndex = resolveUpvalue(parser, parser->compiler, identifier);
+    if (upvalueIndex != -1) {
+        emitBytes(parser, OP_GET_UPVALUE, (uint8_t)upvalueIndex);
+        return;
     }
+    
+    parseIdentifier(parser, identifier, OP_GET_GLOBAL, OP_GET_LONG_GLOBAL); 
 }
 
 static void parseGrouping(Scanner* scanner, Parser* parser) {
@@ -718,25 +731,81 @@ static void beginScope(Parser* parser) {
 }
 
 static int endScope(Parser* parser) {
+    int consecutivePops = 0;
     int count = 0;
+
     for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
-        if (parser->compiler->locals[i].depth != parser->compiler->scopeDepth) break;
+        Local local = parser->compiler->locals[i];
+        if (local.depth != parser->compiler->scopeDepth) break;
+        
+        if (local.isCaptured) {
+            if (consecutivePops > 0) {
+                emitBytes(parser, OP_POPN, (uint8_t)consecutivePops);
+                consecutivePops = 0;
+            }
+            emitByte(parser, OP_CLOSE_UPVALUE);
+        } else {
+            consecutivePops++;
+        }
         count++;
         parser->compiler->localCount--;
     }
 
-    if (count != 0) {
-        emitBytes(parser, OP_POPN, (uint8_t)count);         // Pop off all the locals which were made
+    if (consecutivePops > 0) {
+        emitBytes(parser, OP_POPN, (uint8_t)consecutivePops);
     }
+
     parser->compiler->scopeDepth--;
 
     return count;
 
 }
 
-static int resolveLocal(Parser* parser, Token identifier) {
-    for (int i = parser->compiler->localCount - 1; i >= 0; i--) {
-        Local local = parser->compiler->locals[i];
+static int addUpvalue(Parser* parser, Compiler* compiler, int index, bool isLocal) {
+    if (compiler->function->upvalueCount == UPVAL_MAX) {
+        error(parser, "Cannot close over more than 256 variables");
+        return -1;
+    }
+
+    // Re-Use upvalues which are duplicates
+
+    for (int i = 0; i < compiler->function->upvalueCount; i++) {
+        Upvalue value = compiler->upvalues[i];
+        if (value.index == index && value.isLocal == isLocal) {
+            return i;
+        }
+    }
+
+    Upvalue upvalue;
+    upvalue.index = (uint8_t)index;
+    upvalue.isLocal = isLocal;
+    compiler->upvalues[compiler->function->upvalueCount] = upvalue;
+    return compiler->function->upvalueCount++;
+}
+
+static int resolveUpvalue(Parser* parser, Compiler* compiler, Token identifier) {
+    if (compiler->enclosing == NULL) return -1;
+
+    int localIndex = resolveLocal(compiler->enclosing, identifier);
+    if (localIndex != -1) {
+        // returns index of the upvalue which was just added
+        compiler->enclosing->locals[localIndex].isCaptured = true;
+        // mark variable as captured 
+        return addUpvalue(parser, compiler, localIndex, true);
+    }
+
+    int upvalueIndex = resolveUpvalue(parser, compiler->enclosing, identifier);
+    if (upvalueIndex != -1) {
+        // recursive upvalue sequence 
+        return addUpvalue(parser, compiler, upvalueIndex, false);
+    }
+
+    return -1;
+}
+
+static int resolveLocal(Compiler* compiler, Token identifier) {
+    for (int i = compiler->localCount - 1; i >= 0; i--) {
+        Local local = compiler->locals[i];
         if (identifiersEqual(local.identifier, identifier)) {
             return i + local.significantTemps;
         }
@@ -767,6 +836,7 @@ static void addLocal(Parser* parser, Token identifier) {
     local.depth = parser->compiler->scopeDepth;
     local.identifier = identifier;
     local.significantTemps = parser->compiler->significantTemps;
+    local.isCaptured = false;
 
     parser->compiler->locals[parser->compiler->localCount] = local;
     parser->compiler->localCount++;
@@ -850,7 +920,6 @@ static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
     int arity = parseParameters(scanner, parser, &variadic);
 
     function->variadic = variadic;
-
     function->arity = arity;
     consume(scanner, parser, TOKEN_COLON, "Expected ':' in function declaration");
     
@@ -859,9 +928,11 @@ static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
         statement(scanner, parser);
     }
     consume(scanner, parser, TOKEN_END, "Expected an 'end' to close function declaration");
+    
     endCompiler(&compiler, parser, OP_RET);
     int constant = makeConstant(currentChunk(parser), OBJ(function));
-    emitLongOperand(parser, (uint16_t)constant, OP_CONST, OP_CONST_LONG);
+    emitLongOperand(parser, (uint16_t)constant, OP_CLOSURE, OP_CLOSURE);
+    emitClosureEncoding(parser, &compiler);
     addLocal(parser, identifier);
 }
 
@@ -1067,7 +1138,7 @@ static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentif
     // For loop begins
     beginScope(parser);
     unsigned int forLoopTopIndex = currentChunk(parser)->elem_count;
-    emitBytes(parser, OP_ITERATE_NUM, (uint8_t)resolveLocal(parser, indexIdentifier));
+    emitBytes(parser, OP_ITERATE_NUM, (uint8_t)resolveLocal(parser->compiler, indexIdentifier));
     unsigned int forLoopJmpIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
     
     while (parser->current.type != TOKEN_END && parser->current.type != TOKEN_EOF) {
@@ -1120,13 +1191,13 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
     if (foundValueId) {
         emitByte(parser, OP_ITERATE_VALUE);
         emitBytes(parser, 
-                 (uint8_t)resolveLocal(parser, indexIdentifier), 
-                 (uint8_t)resolveLocal(parser, valueIdentifier)
+                 (uint8_t)resolveLocal(parser->compiler, indexIdentifier), 
+                 (uint8_t)resolveLocal(parser->compiler, valueIdentifier)
         );
     } else {
         emitByte(parser, OP_ITERATE);
         emitByte(parser,
-                 (uint8_t)resolveLocal(parser, indexIdentifier)
+                 (uint8_t)resolveLocal(parser->compiler, indexIdentifier)
         );
     }
 
@@ -1230,40 +1301,47 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
     int global2 = -1;
     int local1 = -1;
     int array1 = -1;
+    int upvalue1 = -1;
 
     switch (operator.type) {
         case TOKEN_EQUAL:
             local1 = OP_ASSIGN_LOCAL;
+            upvalue1 = OP_ASSIGN_UPVALUE;
             global1 = OP_ASSIGN_GLOBAL;
             global2 = OP_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_MOD;
             break;
         case TOKEN_PLUS_EQUAL:
             local1 = OP_PLUS_ASSIGN_LOCAL;
+            upvalue1 = OP_PLUS_ASSIGN_UPVALUE;
             global1 = OP_PLUS_ASSIGN_GLOBAL;
             global2 = OP_PLUS_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_PLUS_MOD;
             break;
         case TOKEN_MINUS_EQUAL:
             local1 = OP_MINUS_ASSIGN_LOCAL;
+            upvalue1 = OP_MINUS_ASSIGN_UPVALUE;
             global1 = OP_SUB_ASSIGN_GLOBAL;
             global2 = OP_SUB_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_MIN_MOD;
             break;
         case TOKEN_MUL_EQUAL:
             local1 = OP_MUL_ASSIGN_LOCAL;
+            upvalue1 = OP_MUL_ASSIGN_UPVALUE;
             global1 = OP_MUL_ASSIGN_GLOBAL;
             global2 = OP_MUL_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_MUL_MOD;
             break;
         case TOKEN_DIV_EQUAL:
             local1 = OP_DIV_ASSIGN_LOCAL;
+            upvalue1 = OP_DIV_ASSIGN_UPVALUE;
             global1 = OP_DIV_ASSIGN_GLOBAL;
             global2 = OP_DIV_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_DIV_MOD;
             break;
         case TOKEN_POW_EQUAL:
             local1 = OP_POW_ASSIGN_LOCAL;
+            upvalue1 = OP_POW_ASSIGN_UPVALUE;
             global1 = OP_POW_ASSIGN_GLOBAL;
             global2 = OP_POW_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_POW_MOD;
@@ -1274,12 +1352,18 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
     }
 
     if (type == CALL_NONE) {
-        int localIndex = resolveLocal(parser, id);
+        int localIndex = resolveLocal(parser->compiler, id);
 
-        if (localIndex == -1) {
-             parseIdentifier(parser, id, (uint8_t)global1, (uint8_t)global2);        
-        } else {
+        if (localIndex != -1) {
             emitBytes(parser, (uint8_t)local1, (uint8_t)localIndex);
+        } else {
+            int upvalueIndex = resolveUpvalue(parser, parser->compiler, id);
+
+            if (upvalueIndex != -1) {
+                emitBytes(parser, (uint8_t)upvalue1, (uint8_t)upvalueIndex);
+            } else {
+                parseIdentifier(parser, id, (uint8_t)global1, (uint8_t)global2); 
+            }
         }
     } else if (type == CALL_ARRAY) {
         emitByte(parser, (uint8_t)array1);
@@ -1326,7 +1410,7 @@ InterpretResult compile(const char* source, VM* vm, ObjFunction* function) {
     #ifdef DEBUG_PRINT_BYTECODE
     
     if (!parser.hadError) {
-        dissembleChunk(currentChunk(&parser), function->name->allocated);
+        dissembleChunk(0, currentChunk(&parser), function->name->allocated);
     }
     #endif
     /* 

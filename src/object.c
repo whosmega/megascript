@@ -6,6 +6,7 @@
 #include "../includes/value.h"
 #include "../includes/vm.h"
 #include "../includes/table.h"
+#include "../includes/debug.h"
 
 /*
     allocateObject allocates the given size which can be the size of any of its subsidaries (ObjString, ect) 
@@ -16,10 +17,16 @@
 */
 
 static Obj* allocateObject(VM* vm, size_t size, ObjType type) {
-    Obj* obj = (Obj*)reallocate(NULL, 0, size);
+    Obj* obj = (Obj*)reallocate(vm, NULL, 0, size);
     obj->type = type;
     obj->next = vm->ObjHead;
+    obj->isMarked = true;
     vm->ObjHead = obj;
+
+    #ifdef DEBUG_LOG_MEMORY
+        printf("%p allocating %zu bytes for type %d\n", (void*)obj, size, type);
+    #endif
+
     return obj;
 }
 
@@ -88,23 +95,23 @@ ObjString* strConcat(VM* vm, Value val1, Value val2) {
 
     int length = str1->length + str2->length;
     
-    char* chars = ALLOCATE(char, length);
+    char* chars = ALLOCATE(vm, char, length);
 
     memcpy(chars, &str1->allocated, str1->length);
     memcpy(chars + str1->length, &str2->allocated, str2->length);
 
     return allocateUnsourcedString(vm, chars, length);
 }
-
+        
 
 ObjArray* allocateArray(VM* vm) {
-    ObjArray* array = (ObjArray*)allocateObject(vm, sizeof(*array), OBJ_ARRAY);
+    ObjArray* array = (ObjArray*)allocateObject(vm, sizeof(ObjArray), OBJ_ARRAY);
     initValueArray(&array->array);
     return array; 
 }
 
 ObjFunction* allocateFunction(VM* vm, ObjString* name, int arity) {
-    ObjFunction* func = (ObjFunction*)allocateObject(vm, sizeof(*func), OBJ_FUNCTION);
+    ObjFunction* func = (ObjFunction*)allocateObject(vm, sizeof(ObjFunction), OBJ_FUNCTION);
     func->arity = arity;
     func->name = name;
     func->variadic = false;
@@ -124,12 +131,33 @@ ObjFunction* newFunctionFromSource(VM* vm, const char* start, int length, int ar
 }
 
 ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr funcPtr) {
-    ObjNativeFunction* native = (ObjNativeFunction*)allocateObject(vm, sizeof(*native), OBJ_NATIVE_FUNCTION);
+    ObjNativeFunction* native = (ObjNativeFunction*)allocateObject(vm, sizeof(ObjNativeFunction), OBJ_NATIVE_FUNCTION);
 
     native->funcPtr = funcPtr;
     native->name = name;
 
     return native;
+}
+
+ObjClosure* allocateClosure(VM* vm, ObjFunction* function) {
+    ObjUpvalue** upvalues = ALLOCATE(vm, ObjUpvalue*, function->upvalueCount);
+    ObjClosure* closure = (ObjClosure*)allocateObject(vm, sizeof(ObjClosure), OBJ_CLOSURE);
+    closure->function = function;
+    closure->upvalues = upvalues;
+    closure->upvalueCount = function->upvalueCount;
+
+    for (int i = 0; i < closure->upvalueCount; i++) {
+        closure->upvalues[i] = NULL;
+    }
+
+    return closure;
+}
+
+ObjUpvalue* allocateUpvalue(VM* vm, Value* value) {
+    ObjUpvalue* upvalue = (ObjUpvalue*)allocateObject(vm, sizeof(ObjUpvalue), OBJ_UPVALUE);
+    upvalue->value = value;
+    upvalue->next = NULL;
+    return upvalue; 
 }
 
 void printObject(Value value) {
@@ -141,29 +169,38 @@ void printObject(Value value) {
             printf("Array <len:%d>", AS_ARRAY(value)->array.count);
             break;
         case OBJ_FUNCTION:
-            printf("Function <%s>", AS_FUNCTION(value)->name->allocated);
+            printf("Raw Function <%s>", AS_FUNCTION(value)->name->allocated);
+            break;
+        case OBJ_CLOSURE:
+            printf("Function <%s>", AS_CLOSURE(value)->function->name->allocated);
             break;
         case OBJ_NATIVE_FUNCTION:
             printf("Native Function <%s>", AS_NATIVE_FUNCTION(value)->name->allocated);
+            break;
+        case OBJ_UPVALUE:
+            printf("Upvalue\n");
             break;
         default: return;
     }
 }
 
-void freeObject(Obj* obj) {
+void freeObject(VM* vm, Obj* obj) {
+    #ifdef DEBUG_LOG_MEMORY
+        printf("%p freeing object %d\n", (void*)obj, obj->type);
+    #endif
     switch (obj->type) {
         case OBJ_STRING: {
             /* Character array will automatically be freed because its 
              * allocated inside the struct due to being a flexible member */
             ObjString* stringObj = (ObjString*)obj;
-            reallocate(stringObj, sizeof(*stringObj), 0);
+            reallocate(vm, stringObj, sizeof(*stringObj), 0);
             break;
         }
         case OBJ_ARRAY: {
             /* Free the value array it contains, and the object itself */ 
             ObjArray* arrayObj = (ObjArray*)obj;
             freeValueArray(&arrayObj->array);
-            reallocate(arrayObj, sizeof(*arrayObj), 0);
+            reallocate(vm, arrayObj, sizeof(ObjArray), 0);
             break;
         } 
         case OBJ_FUNCTION: {
@@ -171,12 +208,23 @@ void freeObject(Obj* obj) {
             // NOTE : The name gets freed individually 
             ObjFunction* funcObj = (ObjFunction*)obj;
             freeChunk(&funcObj->chunk);
-            reallocate(funcObj, sizeof(*funcObj), 0);
+            reallocate(vm, funcObj, sizeof(ObjFunction), 0);
             break;
         }
         case OBJ_NATIVE_FUNCTION: {
             ObjNativeFunction* native = (ObjNativeFunction*)obj;
-            reallocate(native, sizeof(*native), 0);
+            reallocate(vm, native, sizeof(ObjNativeFunction), 0);
+            break;
+        }
+        case OBJ_CLOSURE: {
+            ObjClosure* closure = (ObjClosure*)obj;
+            FREE_ARRAY(ObjUpvalue*, closure->upvalues, closure->upvalueCount);
+            reallocate(vm, closure, sizeof(ObjClosure), 0);
+            break;
+        }
+        case OBJ_UPVALUE: {
+            ObjUpvalue* upvalue = (ObjUpvalue*)obj;
+            reallocate(vm, upvalue, sizeof(ObjUpvalue), 0);
             break;
         }
         default: return;
@@ -187,7 +235,7 @@ void freeObjects(VM* vm) {
     Obj* object = vm->ObjHead;
     while (object != NULL) {
         Obj* next = object->next;
-        freeObject(object);
+        freeObject(vm, object);
         object = next;
     }
 

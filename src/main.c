@@ -51,17 +51,26 @@ void cleanup(const char* source, VM* vm) {
     freeVM(vm);
 }
 
-void runFile(const char* fileName) {
+void runFile(const char* fileName, FlagContainer flagContainer) {
     char* source = readFile(fileName);
 
     VM vm;
     initVM(&vm);
     ObjFunction* function = newFunction(&vm, "main", 0);
     InterpretResult result1 = compile(source, &vm, function);
-    
+
     if (result1 == INTERPRET_COMPILE_ERROR) {
+        if (flagContainer.flags[FLAG_DISSEMBLY]) {
+            printf("Dissembly was not shown because an error occured during compilation\n");
+        }
+
         cleanup(source, &vm);
         exit(100);
+    }
+
+    if (flagContainer.flags[FLAG_DISSEMBLY]) {
+        dissembleChunk(0, &function->chunk, "DISSEMBLY");
+        return;
     }
 
     InterpretResult result2 = interpret(&vm, function);
@@ -101,8 +110,39 @@ void repl() {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc == 2) {
-        runFile(argv[1]);
+
+    if (argc < 2) {
+        repl();
+        return 0;
+    }
+
+    char* sourceFile = NULL; 
+    
+    // Flag 
+    FlagContainer flagContainer;
+    flagContainer.numFlags = 0;
+
+    for (int i = 0; i < FLAG_COUNT; i++) {
+        flagContainer.flags[i] = false;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            // flag 
+            if (strcmp("-d", argv[i]) == 0) {
+                flagContainer.numFlags++;
+                flagContainer.flags[FLAG_DISSEMBLY] = true;
+            } else {
+                fprintf(stderr, "Unknown Flag\n");
+                return 70;
+            }
+        } else {
+            sourceFile = argv[i];
+        }
+    }
+
+    if (sourceFile != NULL) {
+        runFile(sourceFile, flagContainer);
     } else {
         repl();
     }

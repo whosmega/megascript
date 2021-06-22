@@ -16,9 +16,9 @@
 #define READ_BYTE(frameptr) (*frame->ip++)
 #define READ_LONG_BYTE(frameptr) (READ_BYTE(frameptr) | READ_BYTE(frameptr) << 8)
 #define READ_CONSTANT(frameptr) \
-    (frameptr->function->chunk.constants.values[READ_BYTE(frameptr)])
+    (frameptr->closure->function->chunk.constants.values[READ_BYTE(frameptr)])
 #define READ_LONG_CONSTANT(frameptr) \
-    (frameptr->function->chunk.constants.values[READ_LONG_BYTE(frameptr)])
+    (frameptr->closure->function->chunk.constants.values[READ_LONG_BYTE(frameptr)])
 
 #define ASSIGN_GLOBAL(vmpointer, frameptr, valueName, valueFeeder) \
     valueName = READ_CONSTANT(frameptr); \
@@ -36,24 +36,26 @@
       return INTERPRET_RUNTIME_ERROR; \
     }
 
-#define push(vmptr, v) if (vmptr->stackSize == STACK_MAX) {\
-                            msapi_runtimeError(vmptr, "Stack Overflow"); \
-                            return INTERPRET_RUNTIME_ERROR; \
-                       } \
-                       _push_(vmptr, v) \
+#define push(vmptr, v) _push_(vmptr, v) 
 
-#define pushn(vmptr, v, c) if (vmptr->stackSize + c >= STACK_MAX) { \
-                                msapi_runtimeError(vmptr, "Stack Overflow"); \
-                                return INTERPRET_RUNTIME_ERROR; \
-                           } \
-                           _pushn_(vmptr, v, c)
+                       // if ((vmptr->stackTop - vmptr->stack) == STACK_MAX) {\
+                       //      msapi_runtimeError(vmptr, "Stack Overflow"); \
+                       //      return INTERPRET_RUNTIME_ERROR; \
+                       // }
+                      
+#define pushn(vmptr, v, c)  _pushn_(vmptr, v, c)
+
+                           //  if ((vmptr->stackTop - vmptr->stack) >= STACK_MAX) { \
+                           //     msapi_runtimeError(vmptr, "Stack Overflow"); \
+                           //     return INTERPRET_RUNTIME_ERROR; \
+                           //  } 
+                          
 
 void initVM(VM* vm) {
     vm->frameCount = 0;
     vm->ObjHead = NULL;
     initTable(&vm->strings);
     initTable(&vm->globals);
-    vm->stackSize = 0;
     resetStack(vm);
 
     // Setup globals 
@@ -68,6 +70,7 @@ void freeVM(VM* vm) {
 
 void resetStack(VM* vm) {
     vm->stackTop = vm->stack;
+    vm->UpvalueHead = NULL;
 }
 
 /*                      VM API                      */
@@ -80,17 +83,17 @@ void msapi_runtimeError(VM* vm, const char* format, ...) {
     fputs("\n", stderr);
     
     CallFrame* frame = &vm->frames[vm->frameCount - 1];
-    size_t ins = frame->ip - frame->function->chunk.code - 1;
-    int line = frame->function->chunk.lines[ins];
+    size_t ins = frame->ip - frame->closure->function->chunk.code - 1;
+    int line = frame->closure->function->chunk.lines[ins];
     fprintf(stderr, "Line %d: ", line);
     fprintf(stderr, "In Script\n");
 
 
     printf("\nCall Stack Traceback:\n");
-    printf("In function: %s\n", vm->frames[vm->frameCount - 1].function->name->allocated);
+    printf("In function: %s\n", vm->frames[vm->frameCount - 1].closure->function->name->allocated);
     
     for (int i = vm->frameCount - 2; i >= 0; i--) {
-        printf("Called by: %s\n", vm->frames[i].function->name->allocated);
+        printf("Called by: %s\n", vm->frames[i].closure->function->name->allocated);
     }
     resetStack(vm);
 }
@@ -99,11 +102,12 @@ void msapi_runtimeError(VM* vm, const char* format, ...) {
 static inline void _push_(VM* vm, Value value) {
     *vm->stackTop = value;
     vm->stackTop++;
-    vm->stackSize++;
+    // printf("After pushing : %d : %u\n", vm->stackSize, 1);
+
 }
 
-static inline Value pop(VM* vm) {
-    vm->stackSize--;
+static inline Value pop(VM* vm) { 
+    // printf("After popping : %d : %d\n", vm->stackSize, 1);
     return *(--vm->stackTop);
 }
 
@@ -111,12 +115,11 @@ static inline void _pushn_(VM* vm, Value value, unsigned int count) {
     for (int i = 0; i < count; i++) {
         _push_(vm, value);
     }
-    vm->stackSize += count;
 }
 
 static inline void popn(VM* vm, unsigned int count) {
     vm->stackTop -= count;
-    vm->stackSize -= count;
+    // printf("After popping : %d : %u\n", vm->stackSize, count);
 }
 
 static inline Value peek(VM* vm, int offset) {
@@ -136,7 +139,7 @@ static inline bool isFalsey(Value value) {
     return CHECK_NIL(value) || (CHECK_BOOLEAN(value) && !AS_BOOL(value));
 }
 
-bool msapi_pushCallFrame(VM* vm, ObjFunction* function) {
+bool msapi_pushCallFrame(VM* vm, ObjClosure* closure) {
     if (vm->frameCount == FRAME_MAX) {
         msapi_runtimeError(vm, "Error : Max Call-Depth reached (Stack Overflow)");
         return false;
@@ -144,8 +147,8 @@ bool msapi_pushCallFrame(VM* vm, ObjFunction* function) {
     
     // Function should already be pushed on stack
     CallFrame frame;
-    frame.function = function;
-    frame.ip = function->chunk.code;
+    frame.closure = closure;
+    frame.ip = closure->function->chunk.code;
     frame.slotPtr = vm->stackTop;     
 
     vm->frames[vm->frameCount] = frame;
@@ -199,6 +202,49 @@ void msapi_popn(VM* vm, unsigned int count) {
 
 //--------------------------------------------
 
+ObjUpvalue* captureUpvalue(VM* vm, Value* value) {
+    ObjUpvalue* previousUpvalue = NULL;
+    ObjUpvalue* upvalue = vm->UpvalueHead;
+
+    /* We try to find an existing upvalue pointing to the same stack slot 
+     * we do that by iterating from the head of the upvalue linked list to the very end 
+     * We keep moving ahead from the head of the list, if its over or we have passed the 
+     * memory address of the slot we were looking for, we assume there isnt a copy*/
+
+    while (upvalue != NULL && upvalue->value > value) {
+        previousUpvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    if (upvalue != NULL && upvalue->value == value) {
+        // We return the upvalue we found instead of making a new one 
+        return upvalue;
+    }
+
+    /* In case we dont end up finding an already existing upvalue, when creating
+     * a new upvalue, we link it in the right place by setting the next upvalue 
+     * pointer to the last upvalue we iterated over*/
+
+    ObjUpvalue* newUpvalue = allocateUpvalue(vm, value);
+    newUpvalue->next = upvalue;
+
+    if (previousUpvalue == NULL) {
+        vm->UpvalueHead = newUpvalue;
+    } else {
+        previousUpvalue->next = newUpvalue;    
+    }
+
+    return newUpvalue;
+}
+
+static void closeUpvalues(VM* vm, Value* slot) {
+    while (vm->UpvalueHead != NULL && vm->UpvalueHead->value >= slot) {
+        ObjUpvalue* openUpvalue = vm->UpvalueHead;
+        openUpvalue->closed = *slot;
+        openUpvalue->value = &openUpvalue->closed;
+        vm->UpvalueHead = openUpvalue->next;
+    }
+}
 
 /*
  
@@ -219,8 +265,9 @@ static Value read_long_constant(VM* vm) {
 
 */
 
-static InterpretResult run(register VM* vm) {
-    register CallFrame* frame = &vm->frames[vm->frameCount - 1];
+static InterpretResult run(VM* vm) {
+    CallFrame* frame = &vm->frames[vm->frameCount - 1];
+
     for (;;) {
         #ifdef DEBUG_TRACE_EXECUTION
             printf("          ");
@@ -230,7 +277,7 @@ static InterpretResult run(register VM* vm) {
                 printf(" ]");
             }
             printf("\n");
-            dissembleInstruction(&frame->function->chunk, (int)(frame->ip - frame->function->chunk.code));
+            dissembleInstruction(&frame->closure->function->chunk, (int)(frame->ip - frame->closure->function->chunk.code));
             
         #endif
         uint8_t ins = READ_BYTE(frame);        /* Points to instruction about to be executed and stores the current */
@@ -239,6 +286,57 @@ static InterpretResult run(register VM* vm) {
             case OP_ZERO: push(vm, NATIVE_TO_NUMBER(0)); break; 
             case OP_MIN1: push(vm, NATIVE_TO_NUMBER(-1)); break;
             case OP_PLUS1: push(vm, NATIVE_TO_NUMBER(1)); break;
+            case OP_CLOSE_UPVALUE: {
+                closeUpvalues(vm, vm->stackTop - 1);
+                pop(vm);
+                break;
+            }
+            case OP_CLOSURE: {
+                ObjFunction* function = AS_FUNCTION(READ_CONSTANT(frame));
+                ObjClosure* closure = allocateClosure(vm, function);
+
+                for (int i = 0; i < closure->upvalueCount; i++) {
+                    bool isLocal = READ_BYTE(frame);
+                    uint8_t index = READ_BYTE(frame);
+
+                    if (isLocal) {
+                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index);
+                    } else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
+
+                push(vm, OBJ(closure));
+                break;
+            }
+            case OP_CLOSURE_LONG: {
+                ObjFunction* function = AS_FUNCTION(READ_LONG_CONSTANT(frame));
+                ObjClosure* closure = allocateClosure(vm, function);
+
+                for (int i = 0; i < closure->upvalueCount; i++) {
+                    bool isLocal = READ_BYTE(frame);
+                    uint8_t index = READ_BYTE(frame);
+
+                    if (isLocal) {
+                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index);
+                    } else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
+
+                push(vm, OBJ(closure));
+                break;
+            }
+            case OP_GET_UPVALUE: {
+                uint8_t index = READ_BYTE(frame); 
+                push(vm, *frame->closure->upvalues[index]->value);
+                break;
+            }
+            case OP_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                *frame->closure->upvalues[index]->value = pop(vm);
+                break;
+            }
             case OP_ITERATE: {
                 uint8_t indexIndex = READ_BYTE(vm);
                 Value* oldIndex = peekptr(vm, 0);
@@ -766,9 +864,10 @@ static InterpretResult run(register VM* vm) {
             case OP_CALL: {
                 uint8_t argArity = READ_BYTE(frame); 
                 uint8_t expectedReturns = READ_BYTE(frame);
-                Value function = peek(vm, argArity);    // first the function is pushed, the the args, then the call instruction
-                if (CHECK_FUNCTION(function)) {
-                    bool pushed = msapi_pushCallFrame(vm, AS_FUNCTION(function));
+                Value closure = peek(vm, argArity);    // first the function is pushed, the the args, then the call instruction
+                if (CHECK_CLOSURE(closure)) {
+                    ObjFunction* function = AS_CLOSURE(closure)->function;
+                    bool pushed = msapi_pushCallFrame(vm, AS_CLOSURE(closure));
                     if (!pushed) return INTERPRET_RUNTIME_ERROR;
 
                     frame = &vm->frames[vm->frameCount - 1];
@@ -778,11 +877,11 @@ static InterpretResult run(register VM* vm) {
                     // frame was pushed, so we relocate the callframe pointer to the 
                     // beginning of the variable list
                     frame->slotPtr = peekptr(vm, argArity - 1);
-                    uint8_t expectedArgArity = frame->function->arity;
+                    uint8_t expectedArgArity = frame->closure->function->arity;
 
                     if (argArity > expectedArgArity) { 
                         uint8_t extra = argArity - expectedArgArity;
-                        if (AS_FUNCTION(function)->variadic) {
+                        if (function->variadic) {
                             ObjArray* array = allocateArray(vm); 
                             
                             for (int i = extra - 1; i >= 0; i--) {
@@ -801,11 +900,11 @@ static InterpretResult run(register VM* vm) {
                     }
 
                     // if it gets till here, we are in an argArity <= expectedArgArity for sure 
-                    if (AS_FUNCTION(function)->variadic) {
+                    if (function->variadic) {
                         push(vm, OBJ(allocateArray(vm)));
                     }
-                } else if (CHECK_NATIVE_FUNCTION(function)) {
-                    NativeFuncPtr ptr = AS_NATIVE_FUNCTION(function)->funcPtr;
+                } else if (CHECK_NATIVE_FUNCTION(closure)) {
+                    NativeFuncPtr ptr = AS_NATIVE_FUNCTION(closure)->funcPtr;
                     bool result = (*ptr)(vm, argArity, expectedReturns);
                     if (!result) return INTERPRET_RUNTIME_ERROR;
                 } else {
@@ -816,36 +915,21 @@ static InterpretResult run(register VM* vm) {
                 break;
             }
             case OP_RET: {
-                uint8_t numReturns = READ_BYTE(frame);
-                
-                if (frame->expectedReturns > numReturns) {
-                    // Pad extra areas with nil 
-                    uint8_t padding = frame->expectedReturns - numReturns;
-                    pushn(vm, NIL(), padding);
-                    numReturns += padding;
-                } else if (numReturns > frame->expectedReturns) {
-                    uint8_t count = numReturns - frame->expectedReturns;
-                    popn(vm, count);
-                    numReturns -= count;
-                }
-                
-                // numReturns should now be equal to expected returns 
-                // Return values are already on the stack 
-               
-                Value returns[numReturns];
-                for (int i = 0; i < numReturns; i++) {
-                    returns[i] = pop(vm);
+                uint8_t doesReturn = READ_BYTE(frame);
+                uint8_t expectedReturn = frame->expectedReturns;
+                Value ret = NIL();
+                if (doesReturn) {
+                    ret = pop(vm);
                 }
 
+                closeUpvalues(vm, frame->slotPtr);          // move all upvalues to heap
                 vm->stackTop = frame->slotPtr;
                 popCallFrame(vm);
                 // Update the frame variable
                 frame = &vm->frames[vm->frameCount - 1];
                 
-                // Push the return values back in reverse 
-
-                for (int i = numReturns - 1; i >= 0; i--) {
-                    push(vm, returns[i]);
+                if (expectedReturn) {
+                    push(vm, ret); 
                 }
 
                 break;
@@ -1424,8 +1508,11 @@ error_label:
 }
 
 InterpretResult interpret(VM* vm, ObjFunction* function) {
-    push(vm, OBJ(function));
-    msapi_pushCallFrame(vm, function);
+    _push_(vm, OBJ(function));
+    ObjClosure* closure = allocateClosure(vm, function);
+    pop(vm);
+    _push_(vm, OBJ(closure));
+    msapi_pushCallFrame(vm, closure);
     InterpretResult result = run(vm);
     popCallFrame(vm);
     return result;

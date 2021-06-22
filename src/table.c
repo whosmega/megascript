@@ -43,7 +43,7 @@ static void adjustCapacity(Table* table, int capacity) {
     /* The entries are positioned relative to the older capacity, to make sure 
      * the probe sequence remains problem free and returns the current result
      * after changing the capacity, they have to be reinserted completely */  
-    Entry* entries = ALLOCATE(Entry, capacity);
+    Entry* entries = ALLOCATE_ARRAY(Entry, capacity);
     table->count = 0;
     /* Reset all slots back to NULL */ 
     for (int i = 0; i < capacity; i++) {

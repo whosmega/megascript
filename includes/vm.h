@@ -5,11 +5,12 @@
 #include "../includes/chunk.h"
 #include <stdint.h>
 #define LVAR_MAX 256
+#define UPVAL_MAX 256
 #define FRAME_MAX 256
 #define STACK_MAX LVAR_MAX * FRAME_MAX
 
 typedef struct {
-    ObjFunction* function;
+    ObjClosure* closure;
     uint8_t* ip;
     Value* slotPtr;
     uint8_t expectedReturns;
@@ -18,12 +19,12 @@ typedef struct {
 typedef struct {
     CallFrame frames[FRAME_MAX];
     int frameCount;
-    int stackSize;
     Value stack[STACK_MAX]; /* Stack */
     Value* stackTop;
     Table strings;          /* Used for string interning */
     Table globals;
     Obj* ObjHead;       /* Used for tracking the object linked list */
+    ObjUpvalue* UpvalueHead;
 } VM;
 
 typedef enum {
@@ -40,7 +41,7 @@ void resetStack(VM* vm);
 
 /*          API             */ 
 void msapi_runtimeError(VM* vm, const char* format, ...); 
-bool msapi_pushCallFrame(VM* vm, ObjFunction* function);
+bool msapi_pushCallFrame(VM* vm, ObjClosure* closure);
 void msapi_popCallFrame(VM* vm);
 bool msapi_isFalsey(Value value);
 bool msapi_isEqual(Value value1, Value value2);

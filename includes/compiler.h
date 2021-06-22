@@ -9,10 +9,17 @@ typedef struct {
     Token identifier;
     int significantTemps;
     int depth;
+    bool isCaptured;        /* Tells if a local variable is captured by an upvalue */ 
 } Local;
+
+typedef struct {
+    uint8_t index;          /* Index of the upvalue on the runtime upvalue array */ 
+    bool isLocal;           /* if its a local variable or another upvalue */ 
+} Upvalue;
 
 typedef struct Compiler {
     Local locals[LVAR_MAX];
+    Upvalue upvalues[UPVAL_MAX];
     ObjFunction* function;
     struct Compiler* enclosing;
     int localCount;
@@ -43,6 +50,16 @@ typedef enum {
     CALL_ARRAY,
     CALL_NONE
 } CallType;
+
+typedef enum {
+    FLAG_DISSEMBLY,
+    FLAG_COUNT          // number of flags
+} FlagType;
+
+typedef struct {
+    int numFlags;
+    bool flags[FLAG_COUNT];
+} FlagContainer;
 
 void initUintArray(UintArray* array);
 void writeUintArray(UintArray* array, unsigned int value);

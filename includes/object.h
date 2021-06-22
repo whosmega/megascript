@@ -15,6 +15,12 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 #define CHECK_FUNCTION(val) \
     (isObjType(val, OBJ_FUNCTION))
 
+#define CHECK_CLOSURE(val) \
+    (isObjType(val, OBJ_CLOSURE))
+
+#define CHECK_UPVALUE(val) \
+    (isObjType(val, OBJ_UPVALUE))
+
 #define CHECK_NATIVE_FUNCTION(val) \
     (isObjType(val, OBJ_NATIVE_FUNCTION))
 
@@ -36,11 +42,19 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 #define AS_FUNCTION(val) \
     ((ObjFunction*)AS_OBJ(val))
 
+#define AS_UPVALUE(val) \
+    ((ObjUpvalue*)AS_OBJ(val))
+
+#define AS_CLOSURE(val) \
+    ((ObjClosure*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
     OBJ_STRING,
     OBJ_ARRAY,
+    OBJ_UPVALUE,
+    OBJ_CLOSURE,
     OBJ_FUNCTION,
     OBJ_NATIVE_FUNCTION
 } ObjType;
@@ -48,6 +62,7 @@ typedef enum {
 struct Obj {                /* Typedef defined in value.h */
     ObjType type;
     uint32_t hash;
+    bool isMarked; 
     Obj* next;
 };
 
@@ -62,12 +77,27 @@ struct ObjArray {
     ValueArray array;
 };
 
+struct ObjUpvalue {
+    OBJ_HEAD;
+    Value closed;
+    Value* value;
+    struct ObjUpvalue* next;
+};
+
 struct ObjFunction {
     OBJ_HEAD;
     ObjString* name; 
     Chunk chunk;
+    int upvalueCount;
     bool variadic;
     int arity;                  /* Number of arguments expected */
+};
+
+struct ObjClosure {
+    OBJ_HEAD;
+    ObjFunction* function;
+    int upvalueCount;
+    ObjUpvalue** upvalues;
 };
 
 struct ObjNativeFunction {
@@ -85,6 +115,8 @@ ObjFunction* newFunction(VM* vm, const char* name, int arity);
 ObjFunction* newFunctionFromSource(VM* vm, const char* start, int length, int arity);
 ObjArray* allocateArray(VM* vm);
 ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr funcPtr);
+ObjClosure* allocateClosure(VM* vm, ObjFunction* function);
+ObjUpvalue* allocateUpvalue(VM* vm, Value* value);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 
@@ -92,5 +124,5 @@ static inline bool isObjType(Value value, ObjType type) {
 
 void printObject(Value value);
 void freeObjects(VM* vm);
-void freeObject(Obj* obj);
+void freeObject(VM* vm, Obj* obj);
 #endif

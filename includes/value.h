@@ -19,7 +19,9 @@ typedef struct Obj Obj;
 typedef struct ObjString ObjString;
 typedef struct ObjArray ObjArray;
 typedef struct ObjFunction ObjFunction;
+typedef struct ObjClosure ObjClosure;
 typedef struct ObjNativeFunction ObjNativeFunction;
+typedef struct ObjUpvalue ObjUpvalue;
 /* - - - - - - - - - - - - - -*/
 
 typedef struct {

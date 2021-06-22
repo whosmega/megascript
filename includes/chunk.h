@@ -47,6 +47,13 @@ typedef enum {
     OP_DIV_ASSIGN_LOCAL,
     OP_POW_ASSIGN_LOCAL,
     OP_GET_LOCAL,
+    OP_GET_UPVALUE,
+    OP_ASSIGN_UPVALUE,
+    OP_PLUS_ASSIGN_UPVALUE,
+    OP_MINUS_ASSIGN_UPVALUE,
+    OP_MUL_ASSIGN_UPVALUE,
+    OP_DIV_ASSIGN_UPVALUE,
+    OP_POW_ASSIGN_UPVALUE,
     OP_POP,
     OP_POPN,
     OP_JMP,
@@ -84,6 +91,9 @@ typedef enum {
                                                    located on the stack, increments the index, and updates the value, pushes true or false to indicate whether to continue or break */ 
     OP_ITERATE_VALUE,                           /* Index value pair for loops */
     OP_ITERATE_NUM,                             /* Numerical For loops */
+    OP_CLOSURE,                                 /* Wraps a function object into a closure */ 
+    OP_CLOSE_UPVALUE,
+    OP_CLOSURE_LONG,
     OP_CALL,                                    /* Call a function */
     OP_RETEOF
 } OPCODE;                                       /* Enum which defines opcodes */

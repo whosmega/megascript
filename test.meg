@@ -1,0 +1,11 @@
+func a():
+    var a = 1
+    var b = 2
+    var c = 3
+end 
+
+var start = clock()
+for i in 0, 100000000:
+    a()
+end 
+print(clock() - start)

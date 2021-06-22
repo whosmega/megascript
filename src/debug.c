@@ -1,13 +1,20 @@
 #include <stdio.h>
 #include "../includes/debug.h"
 #include "../includes/value.h"
+#include "../includes/object.h"
 
-void dissembleChunk(Chunk* chunk, const char* name) {
-    printf("== %s ==\n", name);
+int mainScope = 0;
+
+void dissembleChunk(int scope, Chunk* chunk, const char* name) {
+    mainScope += scope;
+    printf("%.*s== %s ==\n", mainScope, " ", name);
 
     for (int offset = 0; offset < chunk->elem_count;) {
+        printf("%.*s", mainScope, " ");
         offset = dissembleInstruction(chunk, offset);
     }
+
+    mainScope -= scope;
 
 }
 
@@ -64,6 +71,32 @@ int longConstantInstruction(const char* insName, Chunk* chunk, int offset) {
     
 }
 
+int closureInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint8_t constantIndex = chunk->code[offset + 1];
+    Value functionVal = chunk->constants.values[(int)constantIndex];
+    ObjFunction* function = AS_FUNCTION(functionVal);
+
+    printf("%-16s %4d '", insName, constantIndex);
+    printValue(functionVal);
+    printf("'\n");
+        
+    offset += 2;
+    
+    for (int i = 0; i < function->upvalueCount; i++) {
+        bool isLocal = chunk->code[offset] == 1 ? true : false;
+        int index = chunk->code[offset + 1];
+        printf("%.*s", mainScope, " ");
+        printf("%04d    - %-16s %4d %-7s %d\n", offset, " ", i, isLocal ? "local" : "upvalue", index);
+        offset += 2;
+    }
+    
+    printf("\n");
+    dissembleChunk(4, &function->chunk, function->name->allocated);
+    printf("\n");
+
+    return offset;
+}
+
 int dissembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
 
@@ -79,6 +112,24 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_CLOSURE: 
+            return closureInstruction("CLOSURE (emit)", chunk, offset);
+        case OP_CLOSE_UPVALUE:
+            return simpleInstruction("CLOSE_UPVALUE", offset);
+        case OP_GET_UPVALUE:
+            return localInstruction("GET_UPVALUE", chunk, offset);
+        case OP_ASSIGN_UPVALUE: 
+            return localInstruction("ASSIGN_UPVALUE", chunk, offset);
+        case OP_PLUS_ASSIGN_UPVALUE:
+            return localInstruction("PLUS_ASSIGN_UPVALUE", chunk, offset);
+        case OP_MINUS_ASSIGN_UPVALUE: 
+            return localInstruction("MINUS_ASSIGN_UPVALUE", chunk, offset);
+        case OP_MUL_ASSIGN_UPVALUE:
+            return localInstruction("MUL_ASSIGN_UPVALUE", chunk, offset);
+        case OP_DIV_ASSIGN_UPVALUE:
+            return localInstruction("DIV_ASSIGN_UPVALUE", chunk, offset);
+        case OP_POW_ASSIGN_UPVALUE:
+            return localInstruction("POW_ASSIGN_UPVALUE", chunk, offset);
         case OP_CALL:
             return callInstruction(chunk, offset);
         case OP_RET:
@@ -247,3 +298,4 @@ int dissembleInstruction(Chunk* chunk, int offset) {
             return offset + 1;
     }
 }
+
