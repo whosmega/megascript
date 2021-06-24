@@ -20,7 +20,10 @@
 
 /* Logs memory operations like allocation and freeing, as well as 
  * GC Statistics for various phases */
-#define DEBUG_LOG_MEMORY
+// #define DEBUG_LOG_MEMORY
+
+/* Logs only garbage collection stats */ 
+// #define DEBUG_LOG_GC
 
 void dissembleChunk(int scope, Chunk* chunk, const char* name);        /* Dissembles an entire given chunk with name */
 int dissembleInstruction(Chunk* chunk, int offset);         /* Helper function to dissemle a single instruction 

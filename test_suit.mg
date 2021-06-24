@@ -30,9 +30,9 @@ func test_lfunc():
      var a = 100
      func b():
          if a:
-              return false
+              return true
          end
-         return true
+         return false 
      end
      if !b():
          return false

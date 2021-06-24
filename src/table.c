@@ -103,9 +103,10 @@ ObjString* findStringTable(Table* table, char* chars, int length, uint32_t hash)
     uint32_t index = hash % table->capacity;
     for (;;) {
         Entry* entry = &table->entries[index];
-
-        if (entry->key == NULL && CHECK_NIL(entry->value)) {
-            return NULL;
+        if (entry->key == NULL) {
+            if (CHECK_NIL(entry->value)) {
+                return NULL;
+            }
         } else if (entry->key->length == length && 
                    entry->key->obj.hash == hash &&
                    memcmp(&entry->key->allocated, chars, length) == 0) {

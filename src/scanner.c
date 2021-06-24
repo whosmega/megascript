@@ -119,7 +119,11 @@ static bool isAlphaNumeric(char c) {
 }
 
 static Token scanString(Scanner* scanner, char type) {
-    while (peek(scanner) != type && !isAtEnd(scanner)) {
+    while (!isAtEnd(scanner)) {
+        if (peek(scanner) == type) break;
+        if (peek(scanner) == '\\') {
+            if (peekNext(scanner) == type) advance(scanner);
+        }
         if (peek(scanner) == '\n') scanner->line++;
         advance(scanner);
     }

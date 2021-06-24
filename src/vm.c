@@ -6,6 +6,7 @@
 #include "../includes/value.h"
 #include "../includes/table.h"
 #include "../includes/globals.h"
+#include "../includes/memory.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -54,10 +55,15 @@
 void initVM(VM* vm) {
     vm->frameCount = 0;
     vm->ObjHead = NULL;
+    vm->greyCount = 0;
+    vm->greyCapacity = 0;
+    vm->greyStack = NULL;
+    vm->bytesAllocated = 0;
+    vm->nextGC = 1024 * 1024;
     initTable(&vm->strings);
     initTable(&vm->globals);
     resetStack(vm);
-
+    vm->running = false;
     // Setup globals 
     injectGlobals(vm);
 }
@@ -66,6 +72,7 @@ void freeVM(VM* vm) {
     freeTable(&vm->strings);
     freeTable(&vm->globals);
     freeObjects(vm);
+    FREE_ARRAY(Obj*, vm->greyStack, vm->greyCapacity);
 }
 
 void resetStack(VM* vm) {
@@ -496,9 +503,9 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_ARRAY_PLUS_MOD: {
-                Value value = pop(vm); 
-                Value index = pop(vm); 
-                Value valArray = pop(vm);
+                Value value = peek(vm, 0); 
+                Value index = peek(vm, 1); 
+                Value valArray = peek(vm, 2);
 
                 if (!CHECK_ARRAY(valArray)) {
                     msapi_runtimeError(vm, "Attempt to modify a non-array value");
@@ -536,6 +543,8 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
 
                 }
+
+                popn(vm, 3);
                 break;
             }
             case OP_ARRAY_MIN_MOD: {
@@ -982,7 +991,7 @@ static InterpretResult run(VM* vm) {
             case OP_PLUS_ASSIGN_GLOBAL: {
                 Value name;
                 Value feeder;
-                Value increment = pop(vm);
+                Value increment = peek(vm, 0);
                 ASSIGN_GLOBAL(vm, frame, name, feeder);
             
                 if (CHECK_NUMBER(feeder) && CHECK_NUMBER(increment)) {
@@ -999,13 +1008,14 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
+                pop(vm);
 
                 break;
             }
             case OP_PLUS_ASSIGN_LONG_GLOBAL: {
                 Value name;
                 Value feeder;
-                Value increment = pop(vm);
+                Value increment = peek(vm, 0);
                 ASSIGN_LONG_GLOBAL(vm, frame, name, feeder);
                 
                 if (CHECK_NUMBER(feeder) && CHECK_NUMBER(increment)) {
@@ -1022,6 +1032,8 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
+                pop(vm);
+    
                 break;
 
             }
@@ -1224,7 +1236,7 @@ static InterpretResult run(VM* vm) {
             case OP_PLUS_ASSIGN_LOCAL: {
                 uint8_t localIndex = READ_BYTE(frame);
                 Value old = frame->slotPtr[localIndex];
-                Value new = pop(vm);
+                Value new = peek(vm, 0);
 
                 if (CHECK_NUMBER(old) && CHECK_NUMBER(new)) {
                     frame->slotPtr[localIndex] = NATIVE_TO_NUMBER(AS_NUMBER(old) + AS_NUMBER(new));
@@ -1234,6 +1246,7 @@ static InterpretResult run(VM* vm) {
                     msapi_runtimeError(vm, "Attempt to call '+=' on a non-numeric/string value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
+                pop(vm);
 
                 break;
             }
@@ -1339,7 +1352,9 @@ static InterpretResult run(VM* vm) {
                     /* No storing operands because addition is commutative */
                     push(vm, NATIVE_TO_NUMBER(AS_NUMBER(pop(vm)) + AS_NUMBER(pop(vm))));
                 } else if (CHECK_STRING(peek(vm, 0)) && CHECK_STRING(peek(vm, 1))) {
-                    push(vm, OBJ(strConcat(vm, pop(vm), pop(vm))));
+                    Value string = OBJ(strConcat(vm, peek(vm, 1), peek(vm, 0)));
+                    popn(vm, 2);
+                    push(vm, string);
                 } else {
                     /* Runtime Error */
                     msapi_runtimeError(vm, "Error : Expected Numeric or String Operand to '+'");
@@ -1508,6 +1523,7 @@ error_label:
 }
 
 InterpretResult interpret(VM* vm, ObjFunction* function) {
+    vm->running = true;
     _push_(vm, OBJ(function));
     ObjClosure* closure = allocateClosure(vm, function);
     pop(vm);
@@ -1515,5 +1531,6 @@ InterpretResult interpret(VM* vm, ObjFunction* function) {
     msapi_pushCallFrame(vm, closure);
     InterpretResult result = run(vm);
     popCallFrame(vm);
+    vm->running = false;
     return result;
 }

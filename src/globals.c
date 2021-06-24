@@ -93,12 +93,13 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
                 case OBJ_ARRAY: 
                     msapi_push(vm, OBJ(allocateString(vm, "array", 5)));
                     break;
-                case OBJ_FUNCTION:
-                    msapi_push(vm, OBJ(AS_FUNCTION(thing)->name));
+                case OBJ_CLOSURE:
+                    msapi_push(vm, OBJ(AS_CLOSURE(thing)->function->name));
                     break;
                 case OBJ_NATIVE_FUNCTION:
                     msapi_push(vm, OBJ(AS_NATIVE_FUNCTION(thing)->name));
                     break;
+                default: break;
             }
             break;
         }

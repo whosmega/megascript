@@ -5,11 +5,15 @@
 #include "../includes/debug.h"
 
 void* reallocate(VM* vm, void* array, size_t oldSize, size_t newSize) {
-    #ifdef DEBUG_STRESS_GC
+    vm->bytesAllocated += newSize - oldSize;
     if (newSize > oldSize) {
+#ifdef DEBUG_STRESS_GC
         collectGarbage(vm);
-    } 
-    #endif
+#endif
+        if (vm->bytesAllocated > vm->nextGC) {
+            collectGarbage(vm);
+        }
+    }
 
     if (newSize == 0) {
         free(array);
@@ -18,6 +22,7 @@ void* reallocate(VM* vm, void* array, size_t oldSize, size_t newSize) {
 
     void* result = realloc(array, newSize);
     if (result == NULL) exit(1);
+
     return result;
 }
 

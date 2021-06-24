@@ -20,11 +20,17 @@ typedef struct {
     CallFrame frames[FRAME_MAX];
     int frameCount;
     Value stack[STACK_MAX]; /* Stack */
+    Obj** greyStack;
+    int greyCount;
+    int greyCapacity;
     Value* stackTop;
     Table strings;          /* Used for string interning */
     Table globals;
     Obj* ObjHead;       /* Used for tracking the object linked list */
     ObjUpvalue* UpvalueHead;
+    size_t bytesAllocated;
+    size_t nextGC;
+    bool running;
 } VM;
 
 typedef enum {

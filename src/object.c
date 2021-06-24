@@ -20,7 +20,7 @@ static Obj* allocateObject(VM* vm, size_t size, ObjType type) {
     Obj* obj = (Obj*)reallocate(vm, NULL, 0, size);
     obj->type = type;
     obj->next = vm->ObjHead;
-    obj->isMarked = true;
+    obj->isMarked = false;
     vm->ObjHead = obj;
 
     #ifdef DEBUG_LOG_MEMORY
@@ -63,9 +63,11 @@ ObjString* allocateString(VM* vm, const char* chars, int length) {
     ObjString* stringObj = allocateRawString(vm, length);       /* Make room for the null byte */
     memcpy(stringObj->allocated, chars, length);
     stringObj->obj.hash = hash;
+    
     insertTable(&vm->strings, stringObj, NIL());
     return stringObj;
 }
+
 
 /*
  * Used to allocate strings at runtime which dont have a source
@@ -115,6 +117,7 @@ ObjFunction* allocateFunction(VM* vm, ObjString* name, int arity) {
     func->arity = arity;
     func->name = name;
     func->variadic = false;
+    func->upvalueCount = 0;
     initChunk(&func->chunk);
 
     return func;
@@ -185,8 +188,10 @@ void printObject(Value value) {
 }
 
 void freeObject(VM* vm, Obj* obj) {
-    #ifdef DEBUG_LOG_MEMORY
-        printf("%p freeing object %d\n", (void*)obj, obj->type);
+    #if defined(DEBUG_LOG_GC) || defined(DEBUG_LOG_MEMORY)
+        printf("%p freeing object ", (void*)obj);
+        printValue(OBJ(obj));
+        printf("\n");
     #endif
     switch (obj->type) {
         case OBJ_STRING: {

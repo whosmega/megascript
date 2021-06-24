@@ -1,0 +1,9 @@
+var start = clock()
+var a = ""
+
+for i in 0, 5:
+    a += str(i)
+    print(a)
+end
+
+print(clock() - start)

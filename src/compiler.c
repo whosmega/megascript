@@ -248,7 +248,6 @@ static void checkBadExpression(Scanner* scanner, Parser* parser) {
     }
 }
 
-
 static void expression(Scanner* scanner, Parser* parser) {
     /* if (!checkPrimary(scanner, parser)) return;          If we dont find a primary expression, 
                                                            we arent going to be parsing any significant ex */
@@ -624,7 +623,64 @@ static void parseNumber(Scanner* scanner, Parser* parser) {
 
 static void parseString(Scanner* scanner, Parser* parser) {
     advance(scanner, parser);
-    Value value = OBJ(allocateString(parser->vm, parser->previous.start + 1, parser->previous.length - 2));
+
+    /* Parsing escape sequences */ 
+    char arrayStr[parser->previous.length - 2];     // no need to store quotes 
+    
+    int length = 0;
+    for (int i = 1; i < parser->previous.length - 1; i++) {
+        switch (parser->previous.start[i]) {
+            case '\\':
+                if (i + 1 > parser->previous.length - 1) {
+                    // incase the backslash was the last character 
+                    error(parser, "Incomplete escape sequence in string");
+                    return;
+                }
+
+                switch (parser->previous.start[i + 1]) {
+                    case 'n':
+                        arrayStr[length] = '\n';
+                        i++;
+                        length++;
+                        break;
+                    case '\\':
+                        arrayStr[length] = '\\';
+                        i++;
+                        length++;
+                        break;
+                    case 't':
+                        arrayStr[length] = '\t';
+                        i++;
+                        length++;
+                        break;
+                    case 'b':
+                        arrayStr[length] = '\b';
+                        i++;
+                        length++;
+                        break;
+                    case '\"':
+                        arrayStr[length] = '\"';
+                        i++;
+                        length++;
+                        break;
+                    case '\'':
+                        arrayStr[length] = '\'';
+                        i++;
+                        length++;
+                        break;
+                    default: 
+                        error(parser, "Incomplete escape sequence in string");
+                        return;
+
+                }
+                break;
+            default:
+                arrayStr[length] = parser->previous.start[i];
+                length++;
+        }
+    }
+
+    Value value = OBJ(allocateString(parser->vm, arrayStr, length));
     writeConstant(currentChunk(parser), value, parser->previous.line);
 }
 
@@ -934,6 +990,14 @@ static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
     emitLongOperand(parser, (uint16_t)constant, OP_CLOSURE, OP_CLOSURE);
     emitClosureEncoding(parser, &compiler);
     addLocal(parser, identifier);
+}
+
+static void parseClassStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in class declaration");
+    Token identifier = parser->previous;
+    consume(scanner, parser, TOKEN_COLON, "Expected a ':' in class declaration");
+
 }
 
 static void parseReturnStatement(Scanner* scanner, Parser* parser) {
