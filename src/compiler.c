@@ -51,12 +51,17 @@ static void patchMisc(Parser* parser, unsigned int index, uint8_t value);
 static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag); 
 static void beginScope(Parser* parser);
 static int endScope(Parser* parser);
+static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier);
+
+Token token_self = {TOKEN_IDENTIFIER, "self", 4, 0};
+Token token_super = {TOKEN_IDENTIFIER, "super", 5, 0};
 
 void initCompiler(Compiler* compiler, ObjFunction* function) { 
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
     compiler->significantTemps = 0;
     compiler->function = function;
+    compiler->functionType = TYPE_NORMAL;
     compiler->enclosing = NULL;
 }
 
@@ -465,7 +470,33 @@ static void parseDirectCallSequence(Scanner* scanner, Parser* parser) {
         case TOKEN_ROUND_OPEN: {
             uint8_t arity = (uint8_t)parseFunctionArguments(scanner, parser);
             emitBytes(parser, OP_CALL, arity);
-            emitByte(parser, 1);                // 1 expected return 
+            emitByte(parser, 1);                // it does return 
+            parseDirectCallSequence(scanner, parser);
+            break;
+        }
+        case TOKEN_DOT: {
+            advance(scanner, parser);
+            consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in call sequence");
+            Token identifier = parser->previous;
+            
+            int index = makeConstant(currentChunk(parser), 
+                    OBJ(allocateString(parser->vm, identifier.start, identifier.length)));
+            
+            
+            if (parser->current.type == TOKEN_ROUND_OPEN) {
+                // direct method call optimisation 
+                
+                int arity = parseFunctionArguments(scanner, parser);
+                emitLongOperand(parser, (uint16_t)index, OP_CONST, OP_CONST_LONG);
+
+                emitByte(parser, OP_INVOKE);
+                emitBytes(parser, (uint8_t)arity, 1);
+                parseDirectCallSequence(scanner, parser);
+                break;
+            }
+
+            emitLongOperand(parser, (uint16_t)index, OP_CONST, OP_CONST_LONG);
+            emitByte(parser, OP_GET_FIELD);
             parseDirectCallSequence(scanner, parser);
             break;
         }
@@ -476,7 +507,7 @@ static void parseDirectCallSequence(Scanner* scanner, Parser* parser) {
 static bool checkCall(Scanner* scanner, Parser* parser) {
     switch (parser->current.type) {
         case TOKEN_SQUARE_OPEN:
-            return true;
+        case TOKEN_DOT:
         case TOKEN_ROUND_OPEN:
             return true;
         default: return false;
@@ -486,7 +517,7 @@ static bool checkCall(Scanner* scanner, Parser* parser) {
 
 }
 
-static int parseCallSequenceField(Scanner* scanner, Parser* parser, unsigned int expectedReturns) {
+static int parseCallSequenceField(Scanner* scanner, Parser* parser, bool doesReturn) {
     /* This function parses all the calls normally, it parses the last one too but 
      * instead of emitting an instruction, it returns the type of the call */ 
     
@@ -495,7 +526,7 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser, unsigned int
             parseArrayIndex(scanner, parser);
             if (checkCall(scanner, parser)) {
                 emitByte(parser, OP_ARRAY_GET);
-                return parseCallSequenceField(scanner, parser, expectedReturns);
+                return parseCallSequenceField(scanner, parser, doesReturn);
             } else {
                 /* We've reached the end, this is the target */
                 return CALL_ARRAY;
@@ -509,15 +540,49 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser, unsigned int
 
             uint8_t arity = (uint8_t)parseFunctionArguments(scanner, parser);
             emitByte(parser, OP_CALL);
-            emitBytes(parser, arity, 0xff);      // Arity, Expected Returns
-            int expectedReturnIndex = currentChunk(parser)->elem_count - 1; 
+            emitByte(parser, arity);
             
             if (checkCall(scanner, parser)) {
-                patchMisc(parser, expectedReturnIndex, 1);
-                return parseCallSequenceField(scanner, parser, expectedReturns);
+                emitByte(parser, 1);
+                return parseCallSequenceField(scanner, parser, doesReturn);
             } else {
-                patchMisc(parser, expectedReturnIndex, (uint8_t)expectedReturns);
+                emitByte(parser, (uint8_t)doesReturn);
                 return CALL_FUNC;
+            }
+        }
+        case TOKEN_DOT: {
+            advance(scanner, parser);
+            consume(scanner, parser, TOKEN_IDENTIFIER, "Expected an identifier while assigning field");
+            Token identifier = parser->previous;
+            int index = makeConstant(currentChunk(parser), 
+                    OBJ(allocateString(parser->vm, identifier.start, identifier.length)));
+           
+            if (checkCall(scanner, parser)) {
+                /* Consider this a get expression of a field index */ 
+
+                if (parser->current.type == TOKEN_ROUND_OPEN) {
+                    // direct method call optimisation 
+                    int arity = parseFunctionArguments(scanner, parser);
+                    emitLongOperand(parser, (uint16_t)index, OP_CONST, OP_CONST_LONG);
+
+
+                    emitByte(parser, OP_INVOKE);
+                    emitByte(parser, (uint8_t)arity);
+
+                    if (checkCall(scanner, parser)) {
+                        emitByte(parser, 1);
+                        return parseCallSequenceField(scanner, parser, doesReturn);
+                    } else {
+                        emitByte(parser, doesReturn);
+                        return CALL_FUNC;
+                    }
+                } 
+                emitLongOperand(parser, (uint16_t)index, OP_CONST, OP_CONST_LONG);
+                emitByte(parser, OP_GET_FIELD);    
+                return parseCallSequenceField(scanner, parser, doesReturn);
+            } else { 
+                /* We have parsed as much as possible, this is now an assignment target */
+                return CALL_DOT;
             }
         }
         /* We cant find a valueable token after consuming the identifier
@@ -568,29 +633,14 @@ static void primary(Scanner* scanner, Parser* parser) {
             break;
         case TOKEN_FUNC: 
             advance(scanner, parser);
-            ObjFunction* func = newFunction(parser->vm, "function", 0);
-            Compiler compiler;
-            initCompiler(&compiler, func);
-            setCompiler(&compiler, parser); 
-            compiler.function = func;
             
-            beginScope(parser);
-            bool variadic = false;
-            int arity = parseParameters(scanner, parser, &variadic);
-            consume(scanner, parser, TOKEN_COLON, "Expected a ':' in anonymous function declaration");
-            func->arity = arity;
-            func->variadic = variadic;
-            
-            while (parser->current.type != TOKEN_EOF &&
-                   parser->current.type != TOKEN_END) {
-                statement(scanner, parser);
-            }
-            
-            consume(scanner, parser, TOKEN_END, "Expected an 'end' to close anonymous function declaration");
-            endCompiler(&compiler, parser, OP_RET);
-            int constant = makeConstant(currentChunk(parser), OBJ(func));
-            emitLongOperand(parser, (uint16_t)constant, OP_CLOSURE, OP_CLOSURE_LONG);
-            emitClosureEncoding(parser, &compiler);
+            Token name;
+            name.start = "function";
+            name.length = 8;
+            name.type = TOKEN_IDENTIFIER;
+            name.line = parser->previous.line;
+
+            parseClosureFunction(scanner, parser, name); 
             break;
         default: return;
     }
@@ -931,6 +981,12 @@ static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag)
         do {
             consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier while parsing parameters");
             Token id = parser->previous;
+
+            if (memcmp(id.start, "self", 4) == 0 || 
+                    memcmp(id.start, "super", 5) == 0) {
+                error(parser, "Parameter cannot be named 'self/super' in method");
+            }
+
             if (parser->current.type == TOKEN_VAR_ARGS) {
                 advance(scanner, parser);
                 *variadicFlag = true;
@@ -957,24 +1013,25 @@ static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag)
     return arity;
 }
 
-static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);               // Consume the 'func' 
-    if (parser->current.type != TOKEN_IDENTIFIER) {
-        errorAtCurrent(parser, "Expected Identifier in function declaration");
-        return;
-    } else {
-        advance(scanner, parser);
-    }
-    Token identifier = parser->previous;
-     
+/* How 'self' and 'super' are passed:
+ *
+ * They are always added after all the parameters have been parsed, including 
+ * variadic function types, sometimes we have special function cases like the 
+ * class initialiser which has to discard its own return value in favour of returning 
+ * the class object itself or `self`, in that case we set the function type to 
+ * TYPE_INIT, which when is encountered while returns are parsed, it makes sure it always 
+ * returns 'self' by fetching it's stack index accordingly */
+
+
+static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier) {
     ObjFunction* function = newFunctionFromSource(parser->vm, identifier.start, identifier.length, 0);
     Compiler compiler;
     initCompiler(&compiler, function);
     setCompiler(&compiler, parser);
     beginScope(parser);
-    bool variadic = false;
+    bool variadic = false; 
     int arity = parseParameters(scanner, parser, &variadic);
-
+    
     function->variadic = variadic;
     function->arity = arity;
     consume(scanner, parser, TOKEN_COLON, "Expected ':' in function declaration");
@@ -989,15 +1046,70 @@ static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
     int constant = makeConstant(currentChunk(parser), OBJ(function));
     emitLongOperand(parser, (uint16_t)constant, OP_CLOSURE, OP_CLOSURE);
     emitClosureEncoding(parser, &compiler);
+
+}
+
+static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);               // Consume the 'func' 
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in function declaration");
+    Token identifier = parser->previous;
+
+    parseClosureFunction(scanner, parser, identifier);
+
     addLocal(parser, identifier);
+}
+
+static void parseFieldDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    Token identifier = parser->previous;
+
+    consume(scanner, parser, TOKEN_EQUAL, "Expected an '=' in field declaration");
+    int index = makeConstant(currentChunk(parser), 
+            OBJ(allocateString(parser->vm, identifier.start, identifier.length)));
+
+    expression(scanner, parser);
+    emitLongOperand(parser, (uint16_t)index, OP_SET_CLASS_FIELD, OP_SET_CLASS_FIELD_LONG);
+}
+
+static void parseMethodDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected identifier in method declaration");
+    Token identifier = parser->previous;
+
+    parseClosureFunction(scanner, parser, identifier);
+
+    emitByte(parser, OP_METHOD);
 }
 
 static void parseClassStatement(Scanner* scanner, Parser* parser) {
     advance(scanner, parser);
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in class declaration");
     Token identifier = parser->previous;
-    consume(scanner, parser, TOKEN_COLON, "Expected a ':' in class declaration");
+    Token superId;
 
+    consume(scanner, parser, TOKEN_COLON, "Expected a ':' in class declaration");
+    
+    int index = makeConstant(currentChunk(parser), OBJ(allocateString(parser->vm, 
+                    identifier.start, identifier.length)));
+    emitLongOperand(parser, (uint16_t)index, OP_CLASS, OP_CLASS_LONG);
+    addLocal(parser, identifier);
+    
+    while (parser->current.type != TOKEN_END &&
+            parser->current.type != TOKEN_EOF) {
+        switch (parser->current.type) {
+            case TOKEN_IDENTIFIER:
+                parseFieldDeclaration(scanner, parser);
+                break;
+            case TOKEN_FUNC:
+                parseMethodDeclaration(scanner, parser);
+                break;
+            default: 
+                errorAtCurrent(parser, "Unexpected token in class declaration");
+                return;
+        }
+    }
+
+    consume(scanner, parser, TOKEN_END, "Expected 'end' in class declaration");
 }
 
 static void parseReturnStatement(Scanner* scanner, Parser* parser) {
@@ -1012,12 +1124,12 @@ static void parseReturnStatement(Scanner* scanner, Parser* parser) {
 
     if (checkPrimary(scanner, parser)) {
         expression(scanner, parser);
-        while (match(scanner, parser, TOKEN_COMMA)) {
-            expression(scanner, parser);
-            numReturns++;
-        }
     } else {
-        emitByte(parser, OP_NIL);
+        if (parser->compiler->functionType == TYPE_INIT) {
+            emitBytes(parser, OP_GET_LOCAL, (uint8_t)resolveLocal(parser->compiler, token_self));
+        } else {
+            emitByte(parser, OP_NIL);
+        }
     }
    
     if (numReturns > LVAR_MAX) {
@@ -1316,6 +1428,7 @@ static void statement(Scanner* scanner, Parser* parser) {
         case TOKEN_BREAK: parseBreak(scanner, parser); break;
         case TOKEN_IDENTIFIER: callStatement(scanner, parser); break;
         case TOKEN_FOR: parseForStatement(scanner, parser); break;
+        case TOKEN_CLASS: parseClassStatement(scanner, parser); break;
         case TOKEN_RETURN: parseReturnStatement(scanner, parser); break;
         default: errorAtCurrent(parser, "Unexpected Token, expected a statement (Syntax Error)");
     }
@@ -1366,6 +1479,7 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
     int local1 = -1;
     int array1 = -1;
     int upvalue1 = -1;
+    int field1 = -1;
 
     switch (operator.type) {
         case TOKEN_EQUAL:
@@ -1374,6 +1488,7 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
             global1 = OP_ASSIGN_GLOBAL;
             global2 = OP_ASSIGN_LONG_GLOBAL;
             array1 = OP_ARRAY_MOD;
+            field1 = OP_SET_FIELD;
             break;
         case TOKEN_PLUS_EQUAL:
             local1 = OP_PLUS_ASSIGN_LOCAL;
@@ -1431,6 +1546,8 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
         }
     } else if (type == CALL_ARRAY) {
         emitByte(parser, (uint8_t)array1);
+    } else if (type == CALL_DOT) {
+        emitByte(parser, (uint8_t)field1);
     }
 
     match(scanner, parser, TOKEN_SEMICOLON);
@@ -1438,7 +1555,13 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
 
 void endCompiler(Compiler* compiler, Parser* parser, uint8_t ins) {
     if (ins == OP_RET) {
-        emitByte(parser, OP_NIL);           // return nil by default unless theres another return above this one 
+        if (parser->compiler->functionType == TYPE_INIT) {
+            emitBytes(parser, OP_GET_LOCAL, (uint8_t)resolveLocal(parser->compiler, token_self));
+        } else {
+            emitByte(parser, OP_NIL);
+        }
+
+        // return nil by default unless theres another return above this one 
         emitByte(parser, ins);
         emitByte(parser, 1);                // all user-defined functions have atleast 1 return 
                                             // value expected 

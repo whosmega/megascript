@@ -22,6 +22,9 @@ typedef struct ObjFunction ObjFunction;
 typedef struct ObjClosure ObjClosure;
 typedef struct ObjNativeFunction ObjNativeFunction;
 typedef struct ObjUpvalue ObjUpvalue;
+typedef struct ObjClass ObjClass;
+typedef struct ObjInstance ObjInstance;
+typedef struct ObjMethod ObjMethod;
 /* - - - - - - - - - - - - - -*/
 
 typedef struct {

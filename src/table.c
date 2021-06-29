@@ -96,6 +96,16 @@ bool getTable(Table* table, ObjString* key, Value* value) {
     return true;
 }
 
+void copyTableAll(Table* from, Table* to) {
+    for (int i = 0 ; i < from->capacity; i++) {
+        Entry* entry = &from->entries[i];
+
+        if (entry->key != NULL) {
+            insertTable(to, entry->key, entry->value);
+        }
+    }
+}
+
 /* This function only checks if the key exists */
 
 ObjString* findStringTable(Table* table, char* chars, int length, uint32_t hash) {

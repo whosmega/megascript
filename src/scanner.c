@@ -180,13 +180,12 @@ static Token scanIdentifier(Scanner* scanner) {
                     switch (scanner->start[1]) {
                         case 'n': {
                             if (scanner->current - scanner->start > 2) {
-                                type = checkKeyword(scanner, 3, 6, "herits", TOKEN_INHERITS);
+                                type = checkKeyword(scanner, 2, 6, "herits", TOKEN_INHERITS);
                             } else {
                                 type = TOKEN_IN;
                             }
                             break;
                         }
-                        case 'm': type = checkKeyword(scanner, 2, 9, "portclass", TOKEN_IMPORTCLASS); break;
                     }
                 }
             }
@@ -210,14 +209,6 @@ static Token scanIdentifier(Scanner* scanner) {
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
                     case 'l': type = checkKeyword(scanner, 2, 3, "ass", TOKEN_CLASS); break;
-                }
-            }
-            break;
-        case 's':
-            if (scanner->current - scanner->start > 1) {
-                switch (scanner->start[1]) {
-                    case 'e': type = checkKeyword(scanner, 2, 2, "lf", TOKEN_SELF); break;
-                    case 'u': type = checkKeyword(scanner, 2, 3, "per", TOKEN_SUPER); break;
                 }
             }
             break;

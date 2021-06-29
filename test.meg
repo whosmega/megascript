@@ -1,0 +1,21 @@
+class A:
+    func method():
+        return 100
+    end
+end 
+
+class B:
+    func method(first, second, third):
+        print(first, second, third, self, super)
+        var aInstance = A()
+        return aInstance.method()
+    end 
+
+    func test():
+        print(self)
+        print(super) 
+    end 
+end 
+
+print(B().test())
+print(B().method(1, 2, 3))

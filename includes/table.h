@@ -31,6 +31,7 @@ typedef struct {
 void initTable(Table* table);
 bool insertTable(Table* table, ObjString* key, Value value);
 bool deleteTable(Table* table, ObjString* key);
+void copyTableAll(Table* from, Table* to);
 bool getTable(Table* table, ObjString* key, Value* value);          /* Value is the output paramater */
 ObjString* findStringTable(Table* table, char* chars, int length, uint32_t hash);   /* Used for string interning */
 void freeTable(Table* table);

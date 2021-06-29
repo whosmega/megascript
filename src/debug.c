@@ -112,6 +112,22 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_INVOKE:
+            return doubleOperandInstruction("INVOKE", chunk, offset);
+        case OP_CLASS:
+            return constantInstruction("CLASS (emit)", chunk, offset);
+        case OP_CLASS_LONG:
+            return longConstantInstruction("CLASS_LONG (emit)", chunk, offset);
+        case OP_SET_CLASS_FIELD: 
+            return constantInstruction("SET_FIELD", chunk, offset);
+        case OP_SET_CLASS_FIELD_LONG:
+            return longConstantInstruction("SET_FIELD_LONG", chunk, offset);
+        case OP_SET_FIELD:
+            return simpleInstruction("SET_FIELD", offset);
+        case OP_GET_FIELD:
+            return simpleInstruction("GET_FIELD", offset);
+        case OP_METHOD:
+            return simpleInstruction("METHOD", offset);
         case OP_CLOSURE: 
             return closureInstruction("CLOSURE (emit)", chunk, offset);
         case OP_CLOSE_UPVALUE:

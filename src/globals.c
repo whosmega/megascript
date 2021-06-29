@@ -99,7 +99,16 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
                 case OBJ_NATIVE_FUNCTION:
                     msapi_push(vm, OBJ(AS_NATIVE_FUNCTION(thing)->name));
                     break;
-                default: break;
+                case OBJ_INSTANCE:
+                    msapi_push(vm, OBJ(AS_INSTANCE(thing)->klass->name));
+                    break;
+                case OBJ_CLASS:
+                    msapi_push(vm, OBJ(AS_CLASS(thing)->name));
+                    break;
+                case OBJ_METHOD:
+                    msapi_push(vm, OBJ(AS_METHOD(thing)->closure->function->name));
+                    break;
+                default: msapi_push(vm, NIL()); break;
             }
             break;
         }
@@ -178,7 +187,7 @@ bool msglobal_type(VM *vm, int argCount, int returnCount) {
                     msapi_push(vm, OBJ(allocateString(vm, "array", 5)));
                     break;
                 }
-                case OBJ_FUNCTION: {
+                case OBJ_CLOSURE: {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }
@@ -186,6 +195,19 @@ bool msglobal_type(VM *vm, int argCount, int returnCount) {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }
+                case OBJ_CLASS: {
+                    msapi_push(vm, OBJ(allocateString(vm, "class", 5)));
+                    break;
+                }
+                case OBJ_INSTANCE: {
+                    msapi_push(vm, OBJ(allocateString(vm, "instance", 8)));
+                    break;
+                }
+                case OBJ_METHOD: {
+                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
+                    break;
+                }
+                default: msapi_push(vm, NIL()); break;
             }
         }
     }

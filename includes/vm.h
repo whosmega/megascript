@@ -13,7 +13,7 @@ typedef struct {
     ObjClosure* closure;
     uint8_t* ip;
     Value* slotPtr;
-    uint8_t expectedReturns;
+    bool shouldReturn;
 } CallFrame;
 
 typedef struct {

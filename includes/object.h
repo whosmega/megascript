@@ -24,6 +24,15 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 #define CHECK_NATIVE_FUNCTION(val) \
     (isObjType(val, OBJ_NATIVE_FUNCTION))
 
+#define CHECK_CLASS(val) \
+    (isObjType(val, OBJ_CLASS))
+
+#define CHECK_INSTANCE(val) \
+    (isObjType(val, OBJ_INSTANCE))
+
+#define CHECK_METHOD(val) \
+    (isObjType(val, OBJ_METHOD))
+
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
 
@@ -48,6 +57,15 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 #define AS_CLOSURE(val) \
     ((ObjClosure*)AS_OBJ(val))
 
+#define AS_CLASS(val) \
+    ((ObjClass*)AS_OBJ(val))
+
+#define AS_INSTANCE(val) \
+    ((ObjInstance*)AS_OBJ(val))
+
+#define AS_METHOD(val) \
+    ((ObjMethod*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
@@ -56,7 +74,10 @@ typedef enum {
     OBJ_UPVALUE,
     OBJ_CLOSURE,
     OBJ_FUNCTION,
-    OBJ_NATIVE_FUNCTION
+    OBJ_NATIVE_FUNCTION,
+    OBJ_CLASS,
+    OBJ_INSTANCE,
+    OBJ_METHOD
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -106,6 +127,25 @@ struct ObjNativeFunction {
     NativeFuncPtr funcPtr;
 };
 
+struct ObjClass {
+    OBJ_HEAD;
+    ObjString* name;
+    Table fields;
+    Table methods;
+};
+
+struct ObjInstance {
+    OBJ_HEAD;
+    ObjClass* klass;
+    Table table;
+};
+
+struct ObjMethod {
+    OBJ_HEAD;
+    ObjInstance* self;
+    ObjClosure* closure;
+};
+
 ObjString* allocateRawString(VM* vm, int length);
 ObjString* allocateString(VM* vm, const char* chars, int length);
 ObjString* strConcat(VM* vm, Value val1, Value val2);
@@ -117,6 +157,9 @@ ObjArray* allocateArray(VM* vm);
 ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr funcPtr);
 ObjClosure* allocateClosure(VM* vm, ObjFunction* function);
 ObjUpvalue* allocateUpvalue(VM* vm, Value* value);
+ObjClass* allocateClass(VM* vm, ObjString* name);
+ObjInstance* allocateInstance(VM* vm, ObjClass* klass);
+ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 

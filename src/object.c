@@ -163,6 +163,29 @@ ObjUpvalue* allocateUpvalue(VM* vm, Value* value) {
     return upvalue; 
 }
 
+ObjClass* allocateClass(VM* vm, ObjString* name) {
+    ObjClass* klass = (ObjClass*)allocateObject(vm, sizeof(ObjClass), OBJ_CLASS);
+    klass->name = name;
+    initTable(&klass->fields);
+    initTable(&klass->methods);
+    return klass;
+}
+
+ObjInstance* allocateInstance(VM* vm, ObjClass* klass) {
+    ObjInstance* instance = (ObjInstance*)allocateObject(vm, sizeof(ObjInstance), OBJ_INSTANCE);
+    instance->klass = klass;
+    copyTableAll(&klass->fields, &instance->table);
+    return instance;
+}
+
+ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure) {
+    ObjMethod* method = (ObjMethod*)allocateObject(vm, sizeof(ObjMethod), OBJ_METHOD);
+    method->closure = closure; 
+    method->self = instance;
+    
+    return method;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
@@ -181,7 +204,16 @@ void printObject(Value value) {
             printf("Native Function <%s>", AS_NATIVE_FUNCTION(value)->name->allocated);
             break;
         case OBJ_UPVALUE:
-            printf("Upvalue\n");
+            printf("Upvalue");
+            break;
+        case OBJ_CLASS:
+            printf("Class <%s>", AS_CLASS(value)->name->allocated);
+            break;
+        case OBJ_INSTANCE:
+            printf("Instance <%s>", AS_INSTANCE(value)->klass->name->allocated);
+            break;
+        case OBJ_METHOD:
+            printf("Method <%s>", AS_METHOD(value)->closure->function->name->allocated);
             break;
         default: return;
     }
@@ -230,6 +262,23 @@ void freeObject(VM* vm, Obj* obj) {
         case OBJ_UPVALUE: {
             ObjUpvalue* upvalue = (ObjUpvalue*)obj;
             reallocate(vm, upvalue, sizeof(ObjUpvalue), 0);
+            break;
+        }
+        case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*)obj;
+            freeTable(&klass->methods);
+            freeTable(&klass->fields); 
+            reallocate(vm, klass, sizeof(ObjClass), 0);
+            break;
+        }
+        case OBJ_INSTANCE: {
+            ObjInstance* instance = (ObjInstance*)obj;
+            freeTable(&instance->table);
+            reallocate(vm, instance, sizeof(ObjInstance), 0);
+            break;
+        }
+        case OBJ_METHOD: {
+            reallocate(vm, (ObjMethod*)obj, sizeof(ObjMethod), 0);
             break;
         }
         default: return;

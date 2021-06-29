@@ -95,7 +95,17 @@ typedef enum {
     OP_CLOSE_UPVALUE,
     OP_CLOSURE_LONG,
     OP_CALL,                                    /* Call a function */
-    OP_RETEOF
+    OP_CLASS,                                   /* Pushes a class with name */ 
+    OP_CLASS_LONG,          
+    OP_METHOD,                                  /* Inserts a method into a class */ 
+
+    OP_SET_FIELD,
+    OP_SET_CLASS_FIELD,                         /* Sets a class field */ 
+    OP_SET_CLASS_FIELD_LONG,                    /* Sets a class field */
+    OP_GET_FIELD,
+    OP_INVOKE,
+    OP_INHERIT,
+    OP_RETEOF                                   /* Return from main function + EOF */ 
 } OPCODE;                                       /* Enum which defines opcodes */
 
 typedef struct {

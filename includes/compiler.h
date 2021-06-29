@@ -5,6 +5,11 @@
 #include "../includes/chunk.h"
 #include "../includes/scanner.h"
 
+typedef enum {
+    TYPE_INIT,
+    TYPE_NORMAL,
+} FunctionType;
+
 typedef struct {
     Token identifier;
     int significantTemps;
@@ -21,6 +26,7 @@ typedef struct Compiler {
     Local locals[LVAR_MAX];
     Upvalue upvalues[UPVAL_MAX];
     ObjFunction* function;
+    FunctionType functionType;
     struct Compiler* enclosing;
     int localCount;
     int scopeDepth;
@@ -48,6 +54,7 @@ typedef struct {
 typedef enum {
     CALL_FUNC,
     CALL_ARRAY,
+    CALL_DOT,
     CALL_NONE
 } CallType;
 
