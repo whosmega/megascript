@@ -8,7 +8,6 @@ typedef struct {
 } Scanner;
 
 typedef enum {
-    TOKEN_INHERITS,
     TOKEN_PLUS, TOKEN_MINUS, TOKEN_ASTERISK, TOKEN_SLASH, TOKEN_EXP,                // [+, -, *, /, ^]  
     TOKEN_ROUND_OPEN, TOKEN_ROUND_CLOSE, TOKEN_SQUARE_OPEN, TOKEN_SQUARE_CLOSE,     // [(, ), [, ], {, }, ,, ;, :, ., ?]
     TOKEN_CURLY_OPEN, TOKEN_CURLY_CLOSE,
@@ -29,9 +28,9 @@ typedef enum {
     TOKEN_OR, TOKEN_AND, TOKEN_WHILE, TOKEN_FOR,                                   /* [or, and, while, for, false,
                                                                                        true, if, else, elseif] */
     TOKEN_FALSE, TOKEN_TRUE, TOKEN_IF, TOKEN_ELSE, TOKEN_ELSEIF,
-    TOKEN_CLASS, TOKEN_INHERITS_POS, TOKEN_FUNC, TOKEN_END, 
+    TOKEN_CLASS, TOKEN_INHERITS, TOKEN_FUNC, TOKEN_END, 
     TOKEN_RETURN, TOKEN_GLOBAL, TOKEN_VAR, TOKEN_NIL, TOKEN_BREAK, 
-    TOKEN_IN,
+    TOKEN_IN, TOKEN_SELF, TOKEN_SUPER,
 
     TOKEN_RANGE, TOKEN_VAR_ARGS,                                                     // [{1..4}, abc(args...)]
     TOKEN_EOF, TOKEN_ERROR

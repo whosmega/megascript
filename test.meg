@@ -1,21 +1,11 @@
-class A:
-    func method():
-        return 100
-    end
-end 
-
-class B:
-    func method(first, second, third):
-        print(first, second, third, self, super)
-        var aInstance = A()
-        return aInstance.method()
+var a
+    class A:
+        field = 100
+        func method(a, b, c):
+            av = a 
+            bv = b
+            cv = c
+            return cv
+        end 
     end 
-
-    func test():
-        print(self)
-        print(super) 
-    end 
-end 
-
-print(B().test())
-print(B().method(1, 2, 3))
+ 

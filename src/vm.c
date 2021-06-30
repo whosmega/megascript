@@ -203,8 +203,8 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
 
             // the arguments have already been pushed before the the stack 
             // frame was pushed, so we relocate the callframe pointer to the 
-            // beginning of the variable list
-            frame.slotPtr = peekptr(vm, argCount - 1);
+            // beginning of the variable list before the function 
+            frame.slotPtr = peekptr(vm, argCount);
             vm->frames[vm->frameCount] = frame;
             vm->frameCount++;
 
@@ -243,15 +243,24 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
             break;
         }
         case OBJ_CLASS: {
-            ObjInstance* instance = allocateInstance(vm, AS_CLASS(value)); 
-            popn(vm, argCount + 1);         // for now pop all arguments & the class 
+            ObjClass* klass = AS_CLASS(value);
+            ObjInstance* instance = allocateInstance(vm, klass); 
+            Value _init;
+
+            if (getTable(&klass->methods, allocateString(vm, "_init", 5), &_init)) {
+                vm->stackTop[-argCount - 1] = OBJ(instance);        // set self 
+                return call(vm, _init, true, argCount);
+            }
+
             if (shouldReturn) {
+                popn(vm, argCount + 1);             // pop the args and the class
                 push(vm, OBJ(instance));
             }
             break;
         }
         case OBJ_METHOD: {
             ObjMethod* method = AS_METHOD(value);
+            vm->stackTop[-argCount - 1] = OBJ(method->self);
             call(vm, OBJ(method->closure), shouldReturn, argCount);
             break;
         }
@@ -372,17 +381,22 @@ static InterpretResult run(VM* vm) {
             }
             case OP_SET_CLASS_FIELD: {
                 ObjString* fieldName = AS_STRING(READ_CONSTANT(frame));
-                Value val = peek(vm,  0);  
-                ObjClass* klass = AS_CLASS(peek(vm, 1));
+                uint8_t inherits = READ_BYTE(frame);
 
+                Value val = peek(vm,  0);  
+                /* In case we're inheriting, the super variable comes right after the 
+                 * local variable, and so we might need to look for the class 1 or 0 place higher */
+                ObjClass* klass = AS_CLASS(peek(vm, inherits + 1));
                 insertTable(&klass->fields, fieldName, val);
                 pop(vm);
                 break;
             }
             case OP_SET_CLASS_FIELD_LONG: {
                 ObjString* fieldName = AS_STRING(READ_LONG_CONSTANT(frame));
+                uint8_t inherits = READ_BYTE(frame);
+
                 Value val = peek(vm, 0);
-                ObjClass* klass = AS_CLASS(peek(vm, 1));
+                ObjClass* klass = AS_CLASS(peek(vm, inherits + 1));
                 
                 insertTable(&klass->fields, fieldName, val);
                 pop(vm);
@@ -435,8 +449,9 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_METHOD: { 
+                uint8_t inherits = READ_BYTE(frame);
                 ObjClosure* closure = AS_CLOSURE(peek(vm, 0));
-                ObjClass* klass = AS_CLASS(peek(vm, 1));
+                ObjClass* klass = AS_CLASS(peek(vm, inherits + 1));
                 
                 insertTable(&klass->methods, closure->function->name, OBJ(closure));
                 pop(vm);
@@ -1040,13 +1055,15 @@ static InterpretResult run(VM* vm) {
                 }
 
                 ObjInstance* ins = AS_INSTANCE(instance);
-                Value* closureSlot = peekptr(vm, argCount); // because we already poppped the string
-
-                if (getTable(&ins->klass->methods, string, closureSlot)) {
-                    call(vm, *closureSlot, shouldReturn, argCount);
-                } else if (getTable(&ins->table, string, closureSlot)) {
+                Value closure;
+                
+                if (getTable(&ins->klass->methods, string, &closure)) {
+                    // set self
+                    vm->stackTop[-argCount - 1] = instance;
+                    if (!call(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                } else if (getTable(&ins->table, string, &closure)) {
                     /* If this is a field, its just a normal callable body */
-                    callValue(vm, *closureSlot, shouldReturn, argCount);
+                    if (!callValue(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
                 } else {
                     msapi_runtimeError(vm, "Attempt to call a non-callable object");
                     return INTERPRET_RUNTIME_ERROR;
@@ -1056,6 +1073,32 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_INHERIT: {
+                ObjClass* klass = AS_CLASS(peek(vm, 1));
+                Value superclass = peek(vm, 0);
+                
+                if (!CHECK_CLASS(superclass)) {
+                    msapi_runtimeError(vm, "Error : Expected superclass to be a class");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                copyTableAll(&AS_CLASS(superclass)->methods, &klass->methods);
+                break;
+            }
+            case OP_GET_SUPER: { 
+                ObjClass* super = AS_CLASS(pop(vm));
+                ObjInstance* self = AS_INSTANCE(pop(vm));
+                ObjString* string = AS_STRING(pop(vm));
+
+                Value field;
+                if (getTable(&super->fields, string, &field)) {
+                    push(vm, OBJ(allocateMethod(vm, self, AS_CLOSURE(field))));
+                    break;
+                } else if (getTable(&super->methods, string, &field)) {
+                    push(vm, field);
+                    break;
+                }
+
+                push(vm, NIL());
                 break;
             }
             case OP_RET: {
@@ -1071,8 +1114,6 @@ static InterpretResult run(VM* vm) {
                 
                 /* pop the call frame */ 
                 vm->frameCount--;
-                pop(vm);
-
                 // Update the frame variable
                 frame = &vm->frames[vm->frameCount - 1];
                 
@@ -1085,7 +1126,6 @@ static InterpretResult run(VM* vm) {
             case OP_RETEOF: {
                 vm->stackTop = frame->slotPtr;
                 vm->frameCount--;
-                pop(vm);
                 return INTERPRET_OK;
             }
             case OP_DEFINE_GLOBAL: {
@@ -1672,16 +1712,14 @@ InterpretResult interpret(VM* vm, ObjFunction* function) {
     CallFrame newFrame;
     newFrame.ip = function->chunk.code;
     newFrame.closure = closure;
-    newFrame.slotPtr = vm->stackTop;
+    newFrame.slotPtr = vm->stackTop - 1;
     newFrame.shouldReturn = false;
 
     vm->frames[vm->frameCount] = newFrame;
     vm->frameCount++;
 
-    InterpretResult result = run(vm);
-    
-    vm->frameCount--;
-    pop(vm);
+    InterpretResult result = run(vm); 
+    // it gets popped by RETEOF
 
     vm->running = false;
     return result;

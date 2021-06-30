@@ -105,6 +105,8 @@ typedef enum {
     OP_GET_FIELD,
     OP_INVOKE,
     OP_INHERIT,
+    OP_GET_SUPER,
+    OP_SUPERCALL,
     OP_RETEOF                                   /* Return from main function + EOF */ 
 } OPCODE;                                       /* Enum which defines opcodes */
 

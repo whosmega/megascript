@@ -102,16 +102,66 @@ func test_for():
    return true
 end
 
+func test_class():
+    var av
+    var bv
+    var cv
+    class A:
+        field = 100
+        func method(a, b, c):
+            av = a 
+            bv = b
+            cv = c
+            return cv
+        end 
+    end 
+    var instance = A()
+    if type(instance) != "instance": return false end 
+    instance.field2 = 200
+    if instance.field2 != 200: return false end
+    
+    var holder = instance.field2 
+    if holder != 200: return false end 
+    
+    holder = instance.field 
+    if holder != 100: return false end 
+
+    holder = instance.method(7, 8, 9)
+    if av != 7 or bv != 8 or cv != 9: return false end 
+    if holder != 9: return false end 
+    return true 
+end
+
+func test_expressions():
+    var a = 1 + 2 + 3 + 4 + 5       var aR = 15 
+    var s = 1 - 2 - 3 - 4 - 5       var sR = -13 
+    var m = 1 * 2 * 3 * 4 * 5       var mR = 120 
+    var d = 1 / 2                   var dR = 0.5
+    var p = 2^(2^5)                 var pR = 4294967296
+    var mix = 4^2 + (8 - 32)        var mixR = -8
+
+    if a != aR: return false end 
+    if s != sR: return false end
+    if m != mR: return false end 
+    if d != dR: return false end 
+    if p != pR: return false end 
+    if mix != mixR: return false end 
+
+    return true 
+end 
+
 var tests = [
     test_or_and,
     test_lvars,
     test_lfunc,
     test_array,
     test_while,
-    test_for
+    test_for,
+    test_class,
+    test_expressions
 ]
 
 for i, v in tests:
     var output = v()
-    print("Running test " + str(v) + " [" + str(i+1) + "/" + str(#tests) + "]: " + (output and "Success" or "Failed"))
+    print("Running test " + str(v) + " [" + str(i+1) + "/" + str(#tests) + "] : " + (output and "Success" or "Failed"))
 end

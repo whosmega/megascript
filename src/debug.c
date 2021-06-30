@@ -97,6 +97,22 @@ int closureInstruction(const char* insName, Chunk* chunk, int offset) {
     return offset;
 }
 
+int constantOperandInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint8_t constantIndex = chunk->code[offset + 1];
+    printf("%-16s %4d '", insName, constantIndex);
+    printValue(chunk->constants.values[constantIndex]);
+    printf("' %d\n", chunk->code[offset + 2]);
+    return offset + 3;
+}
+
+int longConstantOperandInstruction(const char* insName, Chunk* chunk, int offset) {
+    uint16_t constantIndex = chunk->code[offset + 1] | chunk->code[offset + 2] << 8;
+    printf("%-16s %4d '", insName, constantIndex);
+    printValue(chunk->constants.values[(int)constantIndex]);
+    printf("' %d\n", chunk->code[offset + 3]);
+    return offset + 4;
+}
+
 int dissembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
 
@@ -112,6 +128,8 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_GET_SUPER:
+            return simpleInstruction("GET_SUPER", offset);
         case OP_INVOKE:
             return doubleOperandInstruction("INVOKE", chunk, offset);
         case OP_CLASS:
@@ -119,15 +137,15 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_CLASS_LONG:
             return longConstantInstruction("CLASS_LONG (emit)", chunk, offset);
         case OP_SET_CLASS_FIELD: 
-            return constantInstruction("SET_FIELD", chunk, offset);
+            return constantOperandInstruction("SET_CLASS_FIELD", chunk, offset);
         case OP_SET_CLASS_FIELD_LONG:
-            return longConstantInstruction("SET_FIELD_LONG", chunk, offset);
+            return longConstantOperandInstruction("SET_CLASS_FIELD_LONG", chunk, offset);
         case OP_SET_FIELD:
             return simpleInstruction("SET_FIELD", offset);
         case OP_GET_FIELD:
             return simpleInstruction("GET_FIELD", offset);
         case OP_METHOD:
-            return simpleInstruction("METHOD", offset);
+            return localInstruction("METHOD", chunk, offset);
         case OP_CLOSURE: 
             return closureInstruction("CLOSURE (emit)", chunk, offset);
         case OP_CLOSE_UPVALUE:

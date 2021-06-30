@@ -8,6 +8,7 @@
 typedef enum {
     TYPE_INIT,
     TYPE_NORMAL,
+    TYPE_METHOD
 } FunctionType;
 
 typedef struct {
@@ -72,7 +73,7 @@ void initUintArray(UintArray* array);
 void writeUintArray(UintArray* array, unsigned int value);
 unsigned int getUintArray(UintArray* array, int index);
 void freeUintArray(UintArray* array);
-void initCompiler(Compiler* compiler, ObjFunction* function);
+void initCompiler(Compiler* compiler, ObjFunction* function, FunctionType type);
 void initParser(Parser* parser, Compiler* compiler, VM* vm);
 InterpretResult compile(const char* source, VM* vm, ObjFunction* function); 
 

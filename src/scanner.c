@@ -216,6 +216,15 @@ static Token scanIdentifier(Scanner* scanner) {
         case 'r': type = checkKeyword(scanner, 1, 5, "eturn", TOKEN_RETURN); break;
         case 'n': type = checkKeyword(scanner, 1, 2, "il", TOKEN_NIL); break;
         case 'g': type = checkKeyword(scanner, 1, 5, "lobal", TOKEN_GLOBAL); break;
+        case 's': {
+            type = checkKeyword(scanner, 1, 3, "elf", TOKEN_SELF);
+        
+            if (type == TOKEN_IDENTIFIER) {
+                type = checkKeyword(scanner, 1, 4, "uper", TOKEN_SUPER);
+                break;
+            }
+            break;
+        }
    }
 
    return makeToken(scanner, type);

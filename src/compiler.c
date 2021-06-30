@@ -32,7 +32,7 @@ static void parseString(Scanner* scanner, Parser* parser);
 static void parseBoolean(Scanner* scanner, Parser* parser, bool value);
 static void parseNil(Scanner* scanner, Parser* parser);
 static void parseArray(Scanner* scanner, Parser* parser);
-static void parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier);
+static bool parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier);
 static void parseGrouping(Scanner* scanner, Parser* parser);
 static void parseGlobalDeclaration(Scanner* scanner, Parser* parser); 
 static void parseVariableDeclaration(Scanner* scanner, Parser* parser);
@@ -51,18 +51,28 @@ static void patchMisc(Parser* parser, unsigned int index, uint8_t value);
 static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag); 
 static void beginScope(Parser* parser);
 static int endScope(Parser* parser);
-static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier);
+static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier, FunctionType type);
+static void parseSupercall(Scanner* scanner, Parser* parser);
 
-Token token_self = {TOKEN_IDENTIFIER, "self", 4, 0};
 Token token_super = {TOKEN_IDENTIFIER, "super", 5, 0};
+Token token_self = {TOKEN_IDENTIFIER, "self", 4, 0};
+Token token_empty = {TOKEN_IDENTIFIER, "", 0, 0};
 
-void initCompiler(Compiler* compiler, ObjFunction* function) { 
-    compiler->localCount = 0;
+void initCompiler(Compiler* compiler, ObjFunction* function, FunctionType type ) { 
+    compiler->localCount = 1;
     compiler->scopeDepth = 0;
     compiler->significantTemps = 0;
     compiler->function = function;
-    compiler->functionType = TYPE_NORMAL;
+    compiler->functionType = type;
     compiler->enclosing = NULL;
+
+    Local local;
+    local.depth = 0;
+    local.identifier = type == TYPE_NORMAL ? token_empty : token_self;
+    local.isCaptured = false; 
+    local.significantTemps = 0;
+
+    compiler->locals[0] = local;
 }
 
 void setCompiler(Compiler* compiler, Parser* parser) {
@@ -582,6 +592,7 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser, bool doesRet
                 return parseCallSequenceField(scanner, parser, doesReturn);
             } else { 
                 /* We have parsed as much as possible, this is now an assignment target */
+                emitLongOperand(parser, (uint16_t)index, OP_CONST, OP_CONST_LONG);
                 return CALL_DOT;
             }
         }
@@ -601,10 +612,6 @@ static void call(Scanner* scanner, Parser* parser) {
 }
 
 static void primary(Scanner* scanner, Parser* parser) {
-    if (!checkPrimary(scanner, parser)) {
-        error(parser, "Expected Expression (Syntax Error)");
-        return;
-    }
     switch (parser->current.type) {
         case TOKEN_ROUND_OPEN:
             parseGrouping(scanner, parser);
@@ -628,6 +635,14 @@ static void primary(Scanner* scanner, Parser* parser) {
             advance(scanner, parser);
             parseReadIdentifier(scanner, parser, parser->previous); 
             break;
+        case TOKEN_SELF:
+            advance(scanner, parser);
+            parseReadIdentifier(scanner, parser, parser->previous);
+            break;
+        case TOKEN_SUPER:
+            advance(scanner, parser);
+            parseSupercall(scanner, parser);
+            break;
         case TOKEN_SQUARE_OPEN:
             parseArray(scanner, parser);
             break;
@@ -640,9 +655,11 @@ static void primary(Scanner* scanner, Parser* parser) {
             name.type = TOKEN_IDENTIFIER;
             name.line = parser->previous.line;
 
-            parseClosureFunction(scanner, parser, name); 
+            parseClosureFunction(scanner, parser, name, TYPE_NORMAL); 
             break;
-        default: return;
+        default:
+            error(parser, "Expected Expression, got (Syntax Error)");
+            return;
     }
 }
 
@@ -654,6 +671,8 @@ static bool checkPrimary(Scanner* scanner, Parser* parser) {
         case TOKEN_TRUE:
         case TOKEN_NIL:
         case TOKEN_IDENTIFIER:
+        case TOKEN_SELF:
+        case TOKEN_SUPER:
         case TOKEN_ROUND_OPEN:
         /* unaries */
         case TOKEN_MINUS:
@@ -794,21 +813,23 @@ static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, u
     emitLongOperand(parser, index, normins, longins);
 }
 
-static void parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier) {
+static bool parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier) {
     int localIndex = resolveLocal(parser->compiler, identifier);
 
     if (localIndex != -1) {
         emitBytes(parser, OP_GET_LOCAL, (uint8_t)localIndex);
-        return; 
+        return true; 
     } 
 
     int upvalueIndex = resolveUpvalue(parser, parser->compiler, identifier);
     if (upvalueIndex != -1) {
         emitBytes(parser, OP_GET_UPVALUE, (uint8_t)upvalueIndex);
-        return;
+        return true;
     }
     
     parseIdentifier(parser, identifier, OP_GET_GLOBAL, OP_GET_LONG_GLOBAL); 
+
+    return false;       // possibly not found 
 }
 
 static void parseGrouping(Scanner* scanner, Parser* parser) {
@@ -1023,10 +1044,10 @@ static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag)
  * returns 'self' by fetching it's stack index accordingly */
 
 
-static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier) {
+static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier, FunctionType type) {
     ObjFunction* function = newFunctionFromSource(parser->vm, identifier.start, identifier.length, 0);
     Compiler compiler;
-    initCompiler(&compiler, function);
+    initCompiler(&compiler, function, type);
     setCompiler(&compiler, parser);
     beginScope(parser);
     bool variadic = false; 
@@ -1054,12 +1075,12 @@ static void parseFunctionDeclaration(Scanner* scanner, Parser* parser) {
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in function declaration");
     Token identifier = parser->previous;
 
-    parseClosureFunction(scanner, parser, identifier);
+    parseClosureFunction(scanner, parser, identifier, TYPE_NORMAL);
 
     addLocal(parser, identifier);
 }
 
-static void parseFieldDeclaration(Scanner* scanner, Parser* parser) {
+static void parseFieldDeclaration(Scanner* scanner, Parser* parser, bool inherits) {
     advance(scanner, parser);
     Token identifier = parser->previous;
 
@@ -1069,16 +1090,22 @@ static void parseFieldDeclaration(Scanner* scanner, Parser* parser) {
 
     expression(scanner, parser);
     emitLongOperand(parser, (uint16_t)index, OP_SET_CLASS_FIELD, OP_SET_CLASS_FIELD_LONG);
+    emitByte(parser, inherits ? 1 : 0);
 }
 
-static void parseMethodDeclaration(Scanner* scanner, Parser* parser) {
+static void parseMethodDeclaration(Scanner* scanner, Parser* parser, bool inherits) {
     advance(scanner, parser);
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected identifier in method declaration");
     Token identifier = parser->previous;
+    FunctionType type = TYPE_METHOD;
 
-    parseClosureFunction(scanner, parser, identifier);
+    if (identifier.length == 5 && memcmp(identifier.start, "_init", identifier.length) == 0) {
+        type = TYPE_INIT;    
+    }
+    parseClosureFunction(scanner, parser, identifier, type);
 
     emitByte(parser, OP_METHOD);
+    emitByte(parser, inherits ? 1 : 0);
 }
 
 static void parseClassStatement(Scanner* scanner, Parser* parser) {
@@ -1086,27 +1113,43 @@ static void parseClassStatement(Scanner* scanner, Parser* parser) {
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in class declaration");
     Token identifier = parser->previous;
     Token superId;
-
-    consume(scanner, parser, TOKEN_COLON, "Expected a ':' in class declaration");
+    bool inherits = false;
     
-    int index = makeConstant(currentChunk(parser), OBJ(allocateString(parser->vm, 
-                    identifier.start, identifier.length)));
-    emitLongOperand(parser, (uint16_t)index, OP_CLASS, OP_CLASS_LONG);
+    parseIdentifier(parser, identifier, OP_CLASS, OP_CLASS_LONG);
     addLocal(parser, identifier);
     
+    if (match(scanner, parser, TOKEN_INHERITS)) {
+        consume(scanner, parser, TOKEN_IDENTIFIER, "Expected an identifier for superclass");
+        superId = parser->previous;
+
+        parseReadIdentifier(scanner, parser, superId);
+        
+        beginScope(parser);
+        addLocal(parser, token_super);
+        emitByte(parser, OP_INHERIT);
+        inherits = true;
+    }
+
+    consume(scanner, parser, TOKEN_COLON, "Expected a ':' in class declaration");
+
+
     while (parser->current.type != TOKEN_END &&
             parser->current.type != TOKEN_EOF) {
         switch (parser->current.type) {
             case TOKEN_IDENTIFIER:
-                parseFieldDeclaration(scanner, parser);
+                parseFieldDeclaration(scanner, parser, inherits);
                 break;
             case TOKEN_FUNC:
-                parseMethodDeclaration(scanner, parser);
+                parseMethodDeclaration(scanner, parser, inherits);
                 break;
             default: 
                 errorAtCurrent(parser, "Unexpected token in class declaration");
                 return;
         }
+    }
+
+    if (inherits) {
+        endScope(parser);
     }
 
     consume(scanner, parser, TOKEN_END, "Expected 'end' in class declaration");
@@ -1427,12 +1470,36 @@ static void statement(Scanner* scanner, Parser* parser) {
         case TOKEN_WHILE: parseWhileStatement(scanner, parser); break;
         case TOKEN_BREAK: parseBreak(scanner, parser); break;
         case TOKEN_IDENTIFIER: callStatement(scanner, parser); break;
+        case TOKEN_SELF: callStatement(scanner, parser); break;
+        case TOKEN_SUPER: callStatement(scanner, parser); break;
         case TOKEN_FOR: parseForStatement(scanner, parser); break;
         case TOKEN_CLASS: parseClassStatement(scanner, parser); break;
         case TOKEN_RETURN: parseReturnStatement(scanner, parser); break;
         default: errorAtCurrent(parser, "Unexpected Token, expected a statement (Syntax Error)");
     }
     if (parser->panicMode) synchronize(scanner, parser);
+}
+
+static void parseSupercall(Scanner* scanner, Parser* parser) {
+    consume(scanner, parser, TOKEN_DOT, "Expected an index call expression");
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected identifier during super call");
+
+    Token identifier = parser->previous;
+    parseIdentifier(parser, identifier, OP_CONST, OP_CONST_LONG);    
+    bool foundSelf = parseReadIdentifier(scanner, parser, token_self);
+    bool foundSuper = parseReadIdentifier(scanner, parser, token_super);
+
+    if (!foundSelf) {
+        error(parser, "Supercall outside method");
+        return;
+    } 
+
+    if (!foundSuper) {
+        error(parser, "Class hasn't have any superclass");
+        return;
+    }
+
+    emitByte(parser, OP_GET_SUPER);
 }
 
 static void callStatement(Scanner* scanner, Parser* parser) {
@@ -1442,6 +1509,18 @@ static void callStatement(Scanner* scanner, Parser* parser) {
     Token identifier = parser->current;
     advance(scanner, parser);
     int type = CALL_NONE;
+    
+    if (identifiersEqual(identifier, token_super)) {
+        parseSupercall(scanner, parser);
+        type = parseCallSequenceField(scanner, parser, false);
+        
+        if (type != CALL_FUNC) {
+            error(parser, "Expected a supercall");
+            return;
+        }
+        match(scanner, parser, TOKEN_SEMICOLON);
+        return;
+    }
 
     if (checkCall(scanner, parser)) {
         /* Call sequences guranteed 
@@ -1449,7 +1528,7 @@ static void callStatement(Scanner* scanner, Parser* parser) {
          * indexing and calling need to evaluate that identifier into a value before 
          * continuing, we parse it right before starting to parse the call / indexing*/
         parseReadIdentifier(scanner, parser, identifier);
-        type = parseCallSequenceField(scanner, parser, 0); // 0 return values expected
+        type = parseCallSequenceField(scanner, parser, false); // 0 return values expected
         if (type == CALL_FUNC) {
             /* do function / class calling stuff 
              * Not a valid assignment target 
@@ -1581,7 +1660,7 @@ InterpretResult compile(const char* source, VM* vm, ObjFunction* function) {
     // Init parser already sets the compiler for us
 
     initScanner(&scanner, source);
-    initCompiler(&compiler, function);
+    initCompiler(&compiler, function, TYPE_NORMAL);
     initParser(&parser, &compiler, vm);
 
     advance(&scanner, &parser);
