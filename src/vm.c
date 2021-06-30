@@ -183,58 +183,62 @@ void msapi_popn(VM* vm, unsigned int count) {
 
 //--------------------------------------------
 
+static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount) {
+    ObjFunction* function = closure->function;
+            
+    if (vm->frameCount == FRAME_MAX) {
+        msapi_runtimeError(vm, "Error : Max Call-Depth reached (Stack Overflow)");
+        return false;
+    }
+    
+    // Function should already be pushed on stack
+    CallFrame frame;
+    frame.closure = closure;
+    frame.ip = closure->function->chunk.code;
+    frame.slotPtr = vm->stackTop;     
+    frame.shouldReturn = shouldReturn;
+
+    // the arguments have already been pushed before the the stack 
+    // frame was pushed, so we relocate the callframe pointer to the 
+    // beginning of the variable list before the function 
+    frame.slotPtr = peekptr(vm, argCount);
+    vm->frames[vm->frameCount] = frame;
+    vm->frameCount++;
+
+    uint8_t expectedArgCount = closure->function->arity;
+
+    if (argCount > expectedArgCount) { 
+        uint8_t extra = argCount - expectedArgCount;
+        if (function->variadic) {
+            ObjArray* array = allocateArray(vm); 
+                            
+            for (int i = extra - 1; i >= 0; i--) {
+                writeValueArray(&array->array, peek(vm, i));   
+            }
+                            
+            popn(vm, extra);
+            push(vm, OBJ(array));
+        } else {
+            popn(vm, extra);
+        }
+    } else if (argCount < expectedArgCount) {
+        uint8_t padding = expectedArgCount - argCount;
+        pushn(vm, NIL(), padding);
+    }
+
+    // if it gets till here, we are in an argArity <= expectedArgArity for sure 
+    if (function->variadic) {
+        push(vm, OBJ(allocateArray(vm)));
+    }
+    
+    return true;
+}
+
 static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {    
     switch (AS_OBJ(value)->type) {
         case OBJ_CLOSURE: {
             ObjClosure* closure = AS_CLOSURE(value);
-            ObjFunction* function = closure->function;
-            
-            if (vm->frameCount == FRAME_MAX) {
-                msapi_runtimeError(vm, "Error : Max Call-Depth reached (Stack Overflow)");
-                return false;
-            }
-    
-            // Function should already be pushed on stack
-            CallFrame frame;
-            frame.closure = closure;
-            frame.ip = closure->function->chunk.code;
-            frame.slotPtr = vm->stackTop;     
-            frame.shouldReturn = shouldReturn;
-
-            // the arguments have already been pushed before the the stack 
-            // frame was pushed, so we relocate the callframe pointer to the 
-            // beginning of the variable list before the function 
-            frame.slotPtr = peekptr(vm, argCount);
-            vm->frames[vm->frameCount] = frame;
-            vm->frameCount++;
-
-            uint8_t expectedArgCount = closure->function->arity;
-
-            if (argCount > expectedArgCount) { 
-                uint8_t extra = argCount - expectedArgCount;
-                if (function->variadic) {
-                    ObjArray* array = allocateArray(vm); 
-                            
-                    for (int i = extra - 1; i >= 0; i--) {
-                        writeValueArray(&array->array, peek(vm, i));   
-                    }
-                            
-                    popn(vm, extra);
-                    push(vm, OBJ(array));
-                } else {
-                    popn(vm, extra);
-                }
-                break;
-            } else if (argCount < expectedArgCount) {
-                uint8_t padding = expectedArgCount - argCount;
-                pushn(vm, NIL(), padding);
-            }
-
-            // if it gets till here, we are in an argArity <= expectedArgArity for sure 
-            if (function->variadic) {
-                push(vm, OBJ(allocateArray(vm)));
-            }
-            break;
+            return callClosure(vm, closure, shouldReturn, argCount);
         }
         case OBJ_NATIVE_FUNCTION: {
             NativeFuncPtr ptr = AS_NATIVE_FUNCTION(value)->funcPtr;
@@ -249,7 +253,7 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
 
             if (getTable(&klass->methods, allocateString(vm, "_init", 5), &_init)) {
                 vm->stackTop[-argCount - 1] = OBJ(instance);        // set self 
-                return call(vm, _init, true, argCount);
+                return callClosure(vm, AS_CLOSURE(_init), true, argCount);
             }
 
             if (shouldReturn) {
@@ -261,7 +265,7 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
         case OBJ_METHOD: {
             ObjMethod* method = AS_METHOD(value);
             vm->stackTop[-argCount - 1] = OBJ(method->self);
-            call(vm, OBJ(method->closure), shouldReturn, argCount);
+            callClosure(vm, method->closure, shouldReturn, argCount);
             break;
         }
         default:
@@ -1060,7 +1064,7 @@ static InterpretResult run(VM* vm) {
                 if (getTable(&ins->klass->methods, string, &closure)) {
                     // set self
                     vm->stackTop[-argCount - 1] = instance;
-                    if (!call(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                    if (!callClosure(vm, AS_CLOSURE(closure), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
                 } else if (getTable(&ins->table, string, &closure)) {
                     /* If this is a field, its just a normal callable body */
                     if (!callValue(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
@@ -1099,6 +1103,27 @@ static InterpretResult run(VM* vm) {
                 }
 
                 push(vm, NIL());
+                break;
+            }
+            case OP_SUPERCALL: {
+                uint8_t argCount = READ_BYTE(frame);
+                bool shouldReturn = (bool)READ_BYTE(frame);
+
+                ObjClass* super = AS_CLASS(pop(vm));
+                ObjInstance* self = AS_INSTANCE(pop(vm));
+                ObjString* string = AS_STRING(peek(vm, argCount));
+
+                Value method;
+                if (getTable(&super->methods, string, &method)) {
+                    vm->stackTop[-argCount - 1] = OBJ(self);
+                    if (!callClosure(vm, AS_CLOSURE(method), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;    
+                } else if (getTable(&super->fields, string, &method)) {
+                    if (!callValue(vm, method, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                } else {
+                    msapi_runtimeError(vm, "Attempt to call a non-callable object");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm->frames[vm->frameCount - 1];
                 break;
             }
             case OP_RET: {

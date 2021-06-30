@@ -1,11 +1,11 @@
-var a
-    class A:
-        field = 100
-        func method(a, b, c):
-            av = a 
-            bv = b
-            cv = c
-            return cv
-        end 
+class A:
+    func over(): return 1 end 
+end 
+
+class B inherits A:
+    func _init():
+        print(super.over())
     end 
- 
+end 
+
+B()

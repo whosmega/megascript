@@ -128,6 +128,8 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_SUPERCALL:
+            return doubleOperandInstruction("SUPERCALL", chunk, offset);
         case OP_GET_SUPER:
             return simpleInstruction("GET_SUPER", offset);
         case OP_INVOKE:

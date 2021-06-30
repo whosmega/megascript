@@ -52,7 +52,7 @@ static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag)
 static void beginScope(Parser* parser);
 static int endScope(Parser* parser);
 static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier, FunctionType type);
-static void parseSupercall(Scanner* scanner, Parser* parser);
+static void parseSupercall(Scanner* scanner, Parser* parser, bool shouldReturn);
 
 Token token_super = {TOKEN_IDENTIFIER, "super", 5, 0};
 Token token_self = {TOKEN_IDENTIFIER, "self", 4, 0};
@@ -458,8 +458,8 @@ static int parseFunctionArguments(Scanner* scanner, Parser* parser) {
         } while (match(scanner, parser, TOKEN_COMMA));
     }
     consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected an ')' while parsing arguments");
-    if (arity > LVAR_MAX) {
-        error(parser, "Cannot have more than 256 arguments");
+    if (arity > LVAR_MAX - 1) {
+        error(parser, "Cannot have more than 255 arguments");
     }
     return arity;
 }
@@ -641,7 +641,7 @@ static void primary(Scanner* scanner, Parser* parser) {
             break;
         case TOKEN_SUPER:
             advance(scanner, parser);
-            parseSupercall(scanner, parser);
+            parseSupercall(scanner, parser, true);
             break;
         case TOKEN_SQUARE_OPEN:
             parseArray(scanner, parser);
@@ -942,8 +942,8 @@ static int resolveLocal(Compiler* compiler, Token identifier) {
 }
 
 static void addLocal(Parser* parser, Token identifier) {
-    if (parser->compiler->localCount >= UINT8_MAX) {
-                errorAt(parser, &identifier, "Cannot contain more than 256 local variables in 1 function");
+    if (parser->compiler->localCount >= LVAR_MAX - 1) {
+                errorAt(parser, &identifier, "Cannot contain more than 255 local variables in 1 function");
         return;
     }
 
@@ -1027,8 +1027,8 @@ static int parseParameters(Scanner* scanner, Parser* parser, bool* variadicFlag)
 
     consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected ')' while parsing parameters");
     
-    if (arity > LVAR_MAX) {
-        error(parser, "Maximum parameter count reached for functions, cannot exceed 256");
+    if (arity > LVAR_MAX - 1) {
+        error(parser, "Maximum parameter count reached for functions, cannot exceed 255");
     }
 
     return arity;
@@ -1173,10 +1173,6 @@ static void parseReturnStatement(Scanner* scanner, Parser* parser) {
         } else {
             emitByte(parser, OP_NIL);
         }
-    }
-   
-    if (numReturns > LVAR_MAX) {
-        error(parser, "Cannot return more than 256 values");
     }
     
     emitBytes(parser, OP_RET, (uint8_t)numReturns);
@@ -1480,12 +1476,21 @@ static void statement(Scanner* scanner, Parser* parser) {
     if (parser->panicMode) synchronize(scanner, parser);
 }
 
-static void parseSupercall(Scanner* scanner, Parser* parser) {
+static void parseSupercall(Scanner* scanner, Parser* parser, bool shouldReturn) {
     consume(scanner, parser, TOKEN_DOT, "Expected an index call expression");
     consume(scanner, parser, TOKEN_IDENTIFIER, "Expected identifier during super call");
 
     Token identifier = parser->previous;
     parseIdentifier(parser, identifier, OP_CONST, OP_CONST_LONG);    
+    bool function = false;
+    int argCount = 0;
+
+    if (parser->current.type == TOKEN_ROUND_OPEN) {
+        argCount = parseFunctionArguments(scanner, parser);
+        function = true;
+    }
+
+    
     bool foundSelf = parseReadIdentifier(scanner, parser, token_self);
     bool foundSuper = parseReadIdentifier(scanner, parser, token_super);
 
@@ -1495,25 +1500,30 @@ static void parseSupercall(Scanner* scanner, Parser* parser) {
     } 
 
     if (!foundSuper) {
-        error(parser, "Class hasn't have any superclass");
+        error(parser, "Class doesn't have any superclass");
         return;
     }
 
-    emitByte(parser, OP_GET_SUPER);
+    if (function) {
+        emitByte(parser, OP_SUPERCALL);
+        emitBytes(parser, (uint8_t)argCount, shouldReturn ? 1 : 0);
+    } else {
+        emitByte(parser, OP_GET_SUPER);
+    }
 }
 
 static void callStatement(Scanner* scanner, Parser* parser) {
-    /* this function's job is to decide whether the statement is a suitable 
-     * identifier call statement or not, if its not, it calls the assignmentStatement() 
+    /* this function's job is to decide whether the statement is a suitable
+     * identifier call statement or not, if its not, it calls the assignmentStatement()
      * function to continue with assignment */
     Token identifier = parser->current;
     advance(scanner, parser);
     int type = CALL_NONE;
-    
+ 
     if (identifiersEqual(identifier, token_super)) {
-        parseSupercall(scanner, parser);
+        parseSupercall(scanner, parser, false);
         type = parseCallSequenceField(scanner, parser, false);
-        
+
         if (type != CALL_FUNC) {
             error(parser, "Expected a supercall");
             return;
@@ -1524,7 +1534,7 @@ static void callStatement(Scanner* scanner, Parser* parser) {
 
     if (checkCall(scanner, parser)) {
         /* Call sequences guranteed 
- ﻿        * since standalone identifiers are compiled by the assignment functions, while 
+         * since standalone identifiers are compiled by the assignment functions, while 
          * indexing and calling need to evaluate that identifier into a value before 
          * continuing, we parse it right before starting to parse the call / indexing*/
         parseReadIdentifier(scanner, parser, identifier);
