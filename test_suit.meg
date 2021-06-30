@@ -132,6 +132,31 @@ func test_class():
     return true 
 end
 
+func test_class_inheritance():
+    class A:
+        func method():
+            return 1
+        end 
+    end 
+    
+    class B inherits A:
+        func method():
+            return 0
+        end 
+
+        func test():
+            return super.method()
+        end 
+    end 
+
+    class C inherits B: end 
+    var ins = C()
+
+    var superResult = ins.test()
+    
+    return superResult == 1 and true or false
+end 
+
 func test_expressions():
     var a = 1 + 2 + 3 + 4 + 5       var aR = 15 
     var s = 1 - 2 - 3 - 4 - 5       var sR = -13 
@@ -158,6 +183,7 @@ var tests = [
     test_while,
     test_for,
     test_class,
+    test_class_inheritance,
     test_expressions
 ]
 
