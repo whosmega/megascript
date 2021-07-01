@@ -128,6 +128,12 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_TABLE:
+            return simpleInstruction("TABLE (emit)", offset);
+        case OP_TABLE_INS:
+            return constantInstruction("TABLE_INS", chunk, offset);
+        case OP_TABLE_INS_LONG:
+            return longConstantInstruction("TABLE_INS_LONG", chunk, offset);
         case OP_SUPERCALL:
             return doubleOperandInstruction("SUPERCALL", chunk, offset);
         case OP_GET_SUPER:
@@ -279,29 +285,26 @@ int dissembleInstruction(Chunk* chunk, int offset) {
         case OP_ARRAY_INS: {
             return simpleInstruction("ARRAY_INS", offset);
         }
-        case OP_ARRAY_PINS: {
-            return simpleInstruction("ARRAY_PINS", offset);
+        case OP_CUSTOM_INDEX_GET: {
+            return simpleInstruction("CUSTOM_INDEX_GET", offset);
         }
-        case OP_ARRAY_GET: {
-            return simpleInstruction("ARRAY_GET", offset);
+        case OP_CUSTOM_INDEX_MOD: {
+            return simpleInstruction("CUSTOM_INDEX_MOD", offset);
         }
-        case OP_ARRAY_MOD: {
-            return simpleInstruction("ARRAY_MOD", offset);
+        case OP_CUSTOM_INDEX_PLUS_MOD: {
+            return localInstruction("CUSTOM_INDEX_PLUS_MOD", chunk, offset);
         }
-        case OP_ARRAY_PLUS_MOD: {
-            return localInstruction("ARRAY_PLUS_MOD", chunk, offset);
+        case OP_CUSTOM_INDEX_SUB_MOD: {
+            return localInstruction("CUSTOM_INDEX_SUB_MOD", chunk, offset);
         }
-        case OP_ARRAY_MIN_MOD: {
-            return localInstruction("ARRAY_SUB_MOD", chunk, offset);
+        case OP_CUSTOM_INDEX_MUL_MOD: {
+            return localInstruction("CUSTOM_INDEX_MUL_MOD", chunk, offset);
         }
-        case OP_ARRAY_MUL_MOD: {
-            return localInstruction("ARRAY_MUL_MOD", chunk, offset);
+        case OP_CUSTOM_INDEX_DIV_MOD: {
+            return localInstruction("CUSTOM_INDEX_DIV_MOD", chunk, offset);
         }
-        case OP_ARRAY_DIV_MOD: {
-            return localInstruction("ARRAY_DIV_MOD", chunk, offset);
-        }
-        case OP_ARRAY_POW_MOD: {
-            return localInstruction("ARRAY_POW_MOD", chunk, offset);
+        case OP_CUSTOM_INDEX_POW_MOD: {
+            return localInstruction("CUSTOM_INDEX_POW_MOD", chunk, offset);
         }
         case OP_ARRAY_RANGE: {
             return simpleInstruction("ARRAY_RANGE", offset);

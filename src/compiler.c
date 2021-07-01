@@ -32,6 +32,7 @@ static void parseString(Scanner* scanner, Parser* parser);
 static void parseBoolean(Scanner* scanner, Parser* parser, bool value);
 static void parseNil(Scanner* scanner, Parser* parser);
 static void parseArray(Scanner* scanner, Parser* parser);
+static void parseTable(Scanner* scanner, Parser* parser);
 static bool parseReadIdentifier(Scanner* scanner, Parser* parser, Token identifier);
 static void parseGrouping(Scanner* scanner, Parser* parser);
 static void parseGlobalDeclaration(Scanner* scanner, Parser* parser); 
@@ -474,7 +475,7 @@ static void parseDirectCallSequence(Scanner* scanner, Parser* parser) {
         case TOKEN_SQUARE_OPEN:
             // Parses [exp]
             parseArrayIndex(scanner, parser);
-            emitByte(parser, OP_ARRAY_GET);
+            emitByte(parser, OP_CUSTOM_INDEX_GET);
             parseDirectCallSequence(scanner, parser);
             break;
         case TOKEN_ROUND_OPEN: {
@@ -535,7 +536,7 @@ static int parseCallSequenceField(Scanner* scanner, Parser* parser, bool doesRet
         case TOKEN_SQUARE_OPEN: {
             parseArrayIndex(scanner, parser);
             if (checkCall(scanner, parser)) {
-                emitByte(parser, OP_ARRAY_GET);
+                emitByte(parser, OP_CUSTOM_INDEX_GET);
                 return parseCallSequenceField(scanner, parser, doesReturn);
             } else {
                 /* We've reached the end, this is the target */
@@ -646,6 +647,9 @@ static void primary(Scanner* scanner, Parser* parser) {
         case TOKEN_SQUARE_OPEN:
             parseArray(scanner, parser);
             break;
+        case TOKEN_CURLY_OPEN:
+            parseTable(scanner, parser);
+            break;
         case TOKEN_FUNC: 
             advance(scanner, parser);
             
@@ -679,6 +683,7 @@ static bool checkPrimary(Scanner* scanner, Parser* parser) {
         case TOKEN_BANG:
         case TOKEN_FUNC:
         case TOKEN_SQUARE_OPEN:
+        case TOKEN_CURLY_OPEN:
             return true;
         default: return false;
     }
@@ -804,6 +809,27 @@ static void parseArray(Scanner* scanner, Parser* parser) {
     }
 
     consume(scanner, parser, TOKEN_SQUARE_CLOSE, "Expected to close array definition with ']'");
+}
+
+static void parseTable(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    emitByte(parser, OP_TABLE);
+    
+    if (match(scanner, parser, TOKEN_CURLY_CLOSE)) return;
+
+    do {
+        consume(scanner, parser, TOKEN_STRING, "Expected a string for table key");
+        if (parser->previous.type != TOKEN_STRING) return;
+
+        uint16_t constant = makeConstant(currentChunk(parser), 
+                OBJ(allocateString(parser->vm, parser->previous.start + 1, parser->previous.length - 2)));
+        
+        consume(scanner, parser, TOKEN_EQUAL, "Expected an '=' when assigning keys");
+        expression(scanner, parser);
+        emitLongOperand(parser, constant, OP_TABLE_INS, OP_TABLE_INS_LONG);
+    } while (match(scanner, parser, TOKEN_COMMA));
+
+    consume(scanner, parser, TOKEN_CURLY_CLOSE, "Expected to close table definition with '}'");
 }
 
 static void parseIdentifier(Parser* parser, Token identifier, uint8_t normins, uint8_t longins) {
@@ -1566,7 +1592,7 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
     int global1 = -1;
     int global2 = -1;
     int local1 = -1;
-    int array1 = -1;
+    int customIndex1 = -1;
     int upvalue1 = -1;
     int field1 = -1;
 
@@ -1576,7 +1602,7 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
             upvalue1 = OP_ASSIGN_UPVALUE;
             global1 = OP_ASSIGN_GLOBAL;
             global2 = OP_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_MOD;
             field1 = OP_SET_FIELD;
             break;
         case TOKEN_PLUS_EQUAL:
@@ -1584,35 +1610,35 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
             upvalue1 = OP_PLUS_ASSIGN_UPVALUE;
             global1 = OP_PLUS_ASSIGN_GLOBAL;
             global2 = OP_PLUS_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_PLUS_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_PLUS_MOD;
             break;
         case TOKEN_MINUS_EQUAL:
             local1 = OP_MINUS_ASSIGN_LOCAL;
             upvalue1 = OP_MINUS_ASSIGN_UPVALUE;
             global1 = OP_SUB_ASSIGN_GLOBAL;
             global2 = OP_SUB_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_MIN_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_SUB_MOD;
             break;
         case TOKEN_MUL_EQUAL:
             local1 = OP_MUL_ASSIGN_LOCAL;
             upvalue1 = OP_MUL_ASSIGN_UPVALUE;
             global1 = OP_MUL_ASSIGN_GLOBAL;
             global2 = OP_MUL_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_MUL_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_MUL_MOD;
             break;
         case TOKEN_DIV_EQUAL:
             local1 = OP_DIV_ASSIGN_LOCAL;
             upvalue1 = OP_DIV_ASSIGN_UPVALUE;
             global1 = OP_DIV_ASSIGN_GLOBAL;
             global2 = OP_DIV_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_DIV_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_DIV_MOD;
             break;
         case TOKEN_POW_EQUAL:
             local1 = OP_POW_ASSIGN_LOCAL;
             upvalue1 = OP_POW_ASSIGN_UPVALUE;
             global1 = OP_POW_ASSIGN_GLOBAL;
             global2 = OP_POW_ASSIGN_LONG_GLOBAL;
-            array1 = OP_ARRAY_POW_MOD;
+            customIndex1 = OP_CUSTOM_INDEX_POW_MOD;
             break;
         default:
             errorAt(parser, &operator, "Expected assignment operator");
@@ -1634,7 +1660,7 @@ static void assignmentStatement(Scanner* scanner, Parser* parser, int type) {
             }
         }
     } else if (type == CALL_ARRAY) {
-        emitByte(parser, (uint8_t)array1);
+        emitByte(parser, (uint8_t)customIndex1);
     } else if (type == CALL_DOT) {
         emitByte(parser, (uint8_t)field1);
     }

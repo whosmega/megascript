@@ -7,6 +7,7 @@
 #include "../includes/table.h"
 #include "../includes/globals.h"
 #include "../includes/memory.h"
+
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -52,6 +53,12 @@
                            //  } 
                           
 
+static void injectArrayMethods(VM* vm) {
+    ObjString* string = allocateString(vm, "insert", 6);
+
+    insertPtrTable(&vm->arrayMethods, string, &msmethod_array_insert);
+}
+
 void initVM(VM* vm) {
     vm->frameCount = 0;
     vm->ObjHead = NULL;
@@ -62,8 +69,12 @@ void initVM(VM* vm) {
     vm->nextGC = 1024 * 1024;
     initTable(&vm->strings);
     initTable(&vm->globals);
+    initPtrTable(&vm->arrayMethods);
     resetStack(vm);
     vm->running = false;
+
+    
+    injectArrayMethods(vm);
     // Setup globals 
     injectGlobals(vm);
 }
@@ -71,6 +82,7 @@ void initVM(VM* vm) {
 void freeVM(VM* vm) {
     freeTable(&vm->strings);
     freeTable(&vm->globals);
+    freePtrTable(&vm->arrayMethods);
     freeObjects(vm);
     FREE_ARRAY(Obj*, vm->greyStack, vm->greyCapacity);
 }
@@ -246,6 +258,13 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
             if (!result) return false;
             break;
         }
+        case OBJ_NATIVE_METHOD: {
+            ObjNativeMethod* native = AS_NATIVE_METHOD(value);
+            NativeMethodPtr ptr = native->function;
+            bool result = (*ptr)(vm, native->self, argCount, shouldReturn);
+            if (!result) return false;
+            break;
+        }
         case OBJ_CLASS: {
             ObjClass* klass = AS_CLASS(value);
             ObjInstance* instance = allocateInstance(vm, klass); 
@@ -284,7 +303,27 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
+static bool checkCustomIndexArray(VM* vm, ObjArray* array, Value index) {
+    if (!CHECK_NUMBER(index)) {
+        msapi_runtimeError(vm, "Expected a number for array index");
+        return false;
+    }
 
+    double numIndex = AS_NUMBER(index);
+
+    if (fmod(numIndex, 1) != 0 || numIndex < 0) {
+        msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
+        return false;
+    }
+
+    if (numIndex + 1 > array->array.count) {
+        msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
+
+        return false;
+    }
+    
+    return true;
+}
 
 static ObjUpvalue* captureUpvalue(VM* vm, Value* value) {
     ObjUpvalue* previousUpvalue = NULL;
@@ -349,6 +388,25 @@ static Value read_long_constant(VM* vm) {
 }
 
 */
+
+/* --------------- Native Methods --------------- */ 
+bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    if (argCount == 0) {
+        msapi_runtimeError(vm, "Expected atleast 1 argument for insert");
+        return false;
+    }
+    ObjArray* array = (ObjArray*)self; 
+    
+    for (int i = argCount - 1; i >= 0; i--) {
+        writeValueArray(&array->array, peek(vm, i));
+    }
+
+    popn(vm, argCount + 1);
+    
+    if (shouldReturn) push(vm, NIL());
+    return true;
+}
+/* ---------------------------------------------- */
 
 static InterpretResult run(VM* vm) {
     CallFrame* frame = &vm->frames[vm->frameCount - 1];
@@ -426,30 +484,53 @@ static InterpretResult run(VM* vm) {
                 ObjString* fieldName = AS_STRING(peek(vm, 0));
                 Value getVal = peek(vm, 1);
                 
-                if (!CHECK_INSTANCE(getVal)) {
-                    msapi_runtimeError(vm, "Expected a class instance for indexing field");
+                if (!CHECK_OBJ(getVal)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                
-                ObjInstance* instance = AS_INSTANCE(getVal);
-                Value value;
-                bool found = getTable(&instance->table, fieldName, &value);
 
-                if (!found) {
-                    bool found2 = getTable(&instance->klass->methods, fieldName, &value);
+                switch (AS_OBJ(getVal)->type) {
+                    case OBJ_INSTANCE: {
+                        ObjInstance* instance = AS_INSTANCE(getVal);
+                        Value value;
+                        bool found = getTable(&instance->table, fieldName, &value);
 
-                    if (found2) {
-                        /* A get index to a method only means they're trying to use it 
-                         * outside the class instance, which means we need to wrap it */ 
-                        ObjMethod* method = allocateMethod(vm, instance, AS_CLOSURE(value));
+                        if (!found) {
+                            bool found2 = getTable(&instance->klass->methods, fieldName, &value);
+
+                            if (found2) {
+                                /* A get index to a method only means they're trying to use it 
+                                * outside the class instance, which means we need to wrap it */ 
+                                ObjMethod* method = allocateMethod(vm, instance, AS_CLOSURE(value));
+                                popn(vm, 2); 
+                                push(vm, OBJ(method));
+                                break;
+                            }
+                        }
+
                         popn(vm, 2); 
-                        push(vm, OBJ(method));
+                        push(vm, found ? value : NIL());
                         break;
                     }
-                }
+                    case OBJ_ARRAY: {
+                        NativeMethodPtr ptr = NULL;
+                        bool found = getPtrTable(&vm->arrayMethods, fieldName, (void*)&ptr);
+                        
+                        popn(vm, 2);
 
-                popn(vm, 2); 
-                push(vm, found ? value : NIL());
+                        if (found) {
+                            push(vm, OBJ(
+                                    allocateNativeMethod(vm, fieldName, 
+                                        (Obj*)AS_OBJ(getVal), ptr)));
+                        } else {
+                            push(vm, NIL());
+                        }
+                        break;
+                    }
+                    default: 
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                }
                 break;
             }
             case OP_METHOD: { 
@@ -625,303 +706,410 @@ static InterpretResult run(VM* vm) {
                 push(vm, OBJ(allocateArray(vm)));
                 break;
             }
+            case OP_TABLE: {
+                push(vm, OBJ(allocateTable(vm)));
+                break;
+            }
+            case OP_TABLE_INS: {
+                ObjString* key = AS_STRING(READ_CONSTANT(frame));
+                Value value = pop(vm);
+                ObjTable* table = AS_TABLE(peek(vm, 0));
+
+                insertTable(&table->table, key, value);
+                break;
+            }
+            case OP_TABLE_INS_LONG: {
+                ObjString* key = AS_STRING(READ_LONG_CONSTANT(frame));
+                Value value = pop(vm);
+                ObjTable* table = AS_TABLE(peek(vm, 0));
+
+                insertTable(&table->table, key, value);
+                break;
+            }
             case OP_ARRAY_INS: {
                 Value value = pop(vm);
                 Value array = peek(vm, 0);
                 writeValueArray(&AS_ARRAY(array)->array, value);
                 break;
             }
-            case OP_ARRAY_PINS: {
-                Value value = pop(vm);
-                Value array = pop(vm);
-                writeValueArray(&AS_ARRAY(array)->array, value);
-                break;
-            }
-            case OP_ARRAY_MOD: {
+            case OP_CUSTOM_INDEX_MOD: {
                 Value value = pop(vm); 
                 Value index = pop(vm); 
                 Value valArray = pop(vm);
-
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-   
-                ObjArray* array = AS_ARRAY(valArray);
-
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
+    
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
-                double numIndex = AS_NUMBER(index);
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
 
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
+                        array->array.values[(int)AS_NUMBER(index)] = value;
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
+                        
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        insertTable(&table->table, AS_STRING(index), value);
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
                 }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                array->array.values[(int)numIndex] = value;
                 break;
             }
-            case OP_ARRAY_PLUS_MOD: {
+            case OP_CUSTOM_INDEX_PLUS_MOD: {
                 Value value = peek(vm, 0); 
                 Value index = peek(vm, 1); 
                 Value valArray = peek(vm, 2);
 
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-   
-                ObjArray* array = AS_ARRAY(valArray);
-
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                Value oldValue = array->array.values[(unsigned int)numIndex];
                 
-                if (CHECK_NUMBER(oldValue) && CHECK_NUMBER(value)) {
-                    array->array.values[(unsigned int)numIndex] = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) + AS_NUMBER(value));
-                } else if (CHECK_STRING(oldValue) && CHECK_STRING(value)) {
-                    array->array.values[(unsigned int)numIndex] = OBJ(strConcat(vm, oldValue, value)); 
-                } else {
-                    msapi_runtimeError(vm, "Attempt call '+=' on a non-numeric/string value");
-                    return INTERPRET_RUNTIME_ERROR;
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
+    
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
 
-                }
+                        Value* oldValuePtr = &array->array.values[(unsigned int)AS_NUMBER(index)];
+                        Value oldValue = *oldValuePtr;
 
+                        if (CHECK_NUMBER(oldValue) && CHECK_NUMBER(value)) {
+                            *oldValuePtr = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) + AS_NUMBER(value));   
+                        } else if (CHECK_STRING(oldValue) && CHECK_STRING(value)) {
+                            *oldValuePtr = OBJ(strConcat(vm, oldValue, value));
+                        } else {
+                            msapi_runtimeError(vm, "Attempt to use '+=' on a non number/string value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
+
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        Value oldValue = NIL();
+                        getTable(&table->table, AS_STRING(index), &oldValue);
+
+                        if (CHECK_NUMBER(oldValue) && CHECK_NUMBER(value)) { 
+                            insertTable(&table->table, 
+                                        AS_STRING(index), 
+                                            NATIVE_TO_NUMBER(
+                                                AS_NUMBER(oldValue) - AS_NUMBER(value)));
+                        } else if (CHECK_STRING(oldValue) && CHECK_STRING(value)) {
+                            insertTable(&table->table, 
+                                        AS_STRING(index),
+                                            OBJ(strConcat(vm, oldValue, value)));
+                        } else {
+                            msapi_runtimeError(vm, "Attempt to call '+=' on a non-numeric/string value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                } 
+                
                 popn(vm, 3);
                 break;
             }
-            case OP_ARRAY_MIN_MOD: {
-                Value value = pop(vm); 
-                Value index = pop(vm); 
-                Value valArray = pop(vm);
+            case OP_CUSTOM_INDEX_SUB_MOD: {
+                Value value = peek(vm, 0); 
+                Value index = peek(vm, 1); 
+                Value valArray = peek(vm, 2);
 
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-   
-                ObjArray* array = AS_ARRAY(valArray);
-
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                Value oldValue = array->array.values[(unsigned int)numIndex];
                 
-                if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
-                    msapi_runtimeError(vm, "Attempt call '-=' on a non-numeric value");
-                    return INTERPRET_RUNTIME_ERROR;
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
+                    
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
 
-                }
+                        Value* oldValuePtr = &array->array.values[(int)AS_NUMBER(index)];
+                        Value oldValue = *oldValuePtr;
 
-                array->array.values[(unsigned int)numIndex] = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) - AS_NUMBER(value));
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '-=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        *oldValuePtr = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) - AS_NUMBER(value));   
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
 
-                break;
-            }
-            case OP_ARRAY_MUL_MOD: {
-                Value value = pop(vm); 
-                Value index = pop(vm); 
-                Value valArray = pop(vm);
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
 
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-   
-                ObjArray* array = AS_ARRAY(valArray);
+                        Value oldValue = NIL();
+                        getTable(&table->table, AS_STRING(index), &oldValue);
+                        
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '-=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
 
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                Value oldValue = array->array.values[(unsigned int)numIndex];
+                        insertTable(&table->table, 
+                                        AS_STRING(index), 
+                                            NATIVE_TO_NUMBER(
+                                                AS_NUMBER(oldValue) - AS_NUMBER(value)));
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                } 
                 
-                if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
-                    msapi_runtimeError(vm, "Attempt call '-=' on a non-numeric value");
-                    return INTERPRET_RUNTIME_ERROR;
-
-                }
-
-                array->array.values[(unsigned int)numIndex] = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) * AS_NUMBER(value));
-
+                popn(vm, 3);
                 break;
+ 
             }
-            case OP_ARRAY_DIV_MOD: {
-                Value value = pop(vm); 
-                Value index = pop(vm); 
-                Value valArray = pop(vm);
+            case OP_CUSTOM_INDEX_MUL_MOD: {
+                Value value = peek(vm, 0); 
+                Value index = peek(vm, 1); 
+                Value valArray = peek(vm, 2);
 
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-   
-                ObjArray* array = AS_ARRAY(valArray);
-
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                Value oldValue = array->array.values[(unsigned int)numIndex];
                 
-                if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
-                    msapi_runtimeError(vm, "Attempt call '-=' on a non-numeric value");
-                    return INTERPRET_RUNTIME_ERROR;
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
+                    
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
 
-                }
+                        Value* oldValuePtr = &array->array.values[(int)AS_NUMBER(index)];
+                        Value oldValue = *oldValuePtr;
 
-                if (AS_NUMBER(value) == 0) {
-                    msapi_runtimeError(vm, "Cannot divide by 0");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '*=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        *oldValuePtr = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) * AS_NUMBER(value));   
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
 
-                array->array.values[(unsigned int)numIndex] = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) / AS_NUMBER(value));
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
 
-                break;
+                        Value oldValue = NIL();
+                        getTable(&table->table, AS_STRING(index), &oldValue);
+                        
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '*=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        insertTable(&table->table, 
+                                        AS_STRING(index), 
+                                            NATIVE_TO_NUMBER(
+                                                AS_NUMBER(oldValue) * AS_NUMBER(value)));
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                } 
+             
             }
+            case OP_CUSTOM_INDEX_DIV_MOD: {
+                Value value = peek(vm, 0); 
+                Value index = peek(vm, 1); 
+                Value valArray = peek(vm, 2);
 
-            case OP_ARRAY_POW_MOD: {
-                Value value = pop(vm); 
-                Value index = pop(vm); 
-                Value valArray = pop(vm);
-
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to modify a non-array value");
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-   
-                ObjArray* array = AS_ARRAY(valArray);
-
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                Value oldValue = array->array.values[(unsigned int)numIndex];
                 
-                if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
-                    msapi_runtimeError(vm, "Attempt call '-=' on a non-numeric value");
-                    return INTERPRET_RUNTIME_ERROR;
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
+                    
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
 
-                }
+                        Value* oldValuePtr = &array->array.values[(int)AS_NUMBER(index)];
+                        Value oldValue = *oldValuePtr;
 
-                array->array.values[(unsigned int)numIndex] = NATIVE_TO_NUMBER(pow(AS_NUMBER(oldValue), AS_NUMBER(value)));
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '/=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        *oldValuePtr = NATIVE_TO_NUMBER(AS_NUMBER(oldValue) / AS_NUMBER(value));   
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
 
-                break;
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        Value oldValue = NIL();
+                        getTable(&table->table, AS_STRING(index), &oldValue);
+                        
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '/=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        insertTable(&table->table, 
+                                        AS_STRING(index), 
+                                            NATIVE_TO_NUMBER(
+                                                AS_NUMBER(oldValue) / AS_NUMBER(value)));
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                } 
+             
             }
+            case OP_CUSTOM_INDEX_POW_MOD: {
+                Value value = peek(vm, 0); 
+                Value index = peek(vm, 1); 
+                Value valArray = peek(vm, 2);
 
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
+                    
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
 
+                        Value* oldValuePtr = &array->array.values[(int)AS_NUMBER(index)];
+                        Value oldValue = *oldValuePtr;
 
-            case OP_ARRAY_GET: {
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '^=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        *oldValuePtr = NATIVE_TO_NUMBER(pow(AS_NUMBER(oldValue), AS_NUMBER(value)));   
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
+
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Expected table index to be a string");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        Value oldValue = NIL();
+                        getTable(&table->table, AS_STRING(index), &oldValue);
+                        
+                        if (!CHECK_NUMBER(oldValue) || !CHECK_NUMBER(value)) {
+                            msapi_runtimeError(vm, "Attempt to call '^=' on a non numeric value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        insertTable(&table->table, 
+                                        AS_STRING(index), 
+                                            NATIVE_TO_NUMBER(
+                                                pow(AS_NUMBER(oldValue), AS_NUMBER(value))));
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                } 
+             
+            }
+            case OP_CUSTOM_INDEX_GET: {
                 Value index = pop(vm);
                 Value valArray = pop(vm);  
 
-                if (!CHECK_ARRAY(valArray)) {
-                    msapi_runtimeError(vm, "Attempt to index a non-array value");
+                if (!CHECK_OBJ(valArray)) {
+                    msapi_runtimeError(vm, "Attempt to index a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
-                ObjArray* array = AS_ARRAY(valArray);
+                switch (AS_OBJ(valArray)->type) {
+                    case OBJ_ARRAY: {
+                        ObjArray* array = AS_ARRAY(valArray);
 
-                if (!CHECK_NUMBER(index)) {
-                    msapi_runtimeError(vm, "Expected a number for array index");
-                    return INTERPRET_RUNTIME_ERROR;
+                        if (!checkCustomIndexArray(vm, array, index)) return INTERPRET_RUNTIME_ERROR;
+
+                        push(vm, array->array.values[(int)AS_NUMBER(index)]);
+                        break;
+                    }
+                    case OBJ_STRING: {
+                        ObjString* string = AS_STRING(valArray);
+
+                        if (!CHECK_NUMBER(index)) {
+                            msapi_runtimeError(vm, "String indexing can only be done with integer indexes");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        double numIndex = AS_NUMBER(index);
+
+                        if (fmod(numIndex, 1) != 0 || numIndex < 0) {
+                            msapi_runtimeError(vm, "String Index is expected to be a positive integer, got %g", numIndex);
+                            return false;
+                        }
+
+                        if (numIndex + 1 > string->length) {
+                            msapi_runtimeError(vm, "String Index %g out of range", numIndex);
+
+                            return false;
+                        }
+
+
+                        push(vm, OBJ(allocateString(vm, &string->allocated[(int)numIndex], 1)));
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(valArray);
+
+                        if (!CHECK_STRING(index)) {
+                            msapi_runtimeError(vm, "Attempt to index table with non-string index");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        Value tableVal = NIL();
+                        getTable(&table->table, AS_STRING(index), &tableVal);
+
+                        push(vm, tableVal);
+                        break;
+                    }
+                    default:
+                        msapi_runtimeError(vm, "Attempt to index a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
                 }
-
-                double numIndex = AS_NUMBER(index);
-
-                if (fmod(numIndex, 1) != 0 || numIndex < 0) {
-                    msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                if (numIndex + 1 > array->array.count) {
-                    msapi_runtimeError(vm, "Array Index %g out of range", numIndex);
-
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                push(vm, array->array.values[(int)numIndex]);
                 break;
             
             }
@@ -1051,30 +1239,52 @@ static InterpretResult run(VM* vm) {
                 uint8_t argCount = READ_BYTE(frame);
                 bool shouldReturn = (bool)READ_BYTE(frame);
                 ObjString* string = AS_STRING(pop(vm));
-                Value instance = peek(vm, argCount);
-
-                if (!CHECK_INSTANCE(instance)) {
-                    msapi_runtimeError(vm, "Attempt to index a non-instance value");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
-
-                ObjInstance* ins = AS_INSTANCE(instance);
-                Value closure;
+                Value callVal = peek(vm, argCount);
                 
-                if (getTable(&ins->klass->methods, string, &closure)) {
-                    // set self
-                    vm->stackTop[-argCount - 1] = instance;
-                    if (!callClosure(vm, AS_CLOSURE(closure), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
-                } else if (getTable(&ins->table, string, &closure)) {
-                    /* If this is a field, its just a normal callable body */
-                    if (!callValue(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
-                } else {
-                    msapi_runtimeError(vm, "Attempt to call a non-callable object");
+                if (!CHECK_OBJ(callVal)) {
+                    msapi_runtimeError(vm, "Attempt to invoke a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
+        
+                switch (AS_OBJ(callVal)->type) {
+                    case OBJ_INSTANCE: {
+                        ObjInstance* ins = AS_INSTANCE(callVal);
+                        Value closure;
+                
+                        if (getTable(&ins->klass->methods, string, &closure)) {
+                            // set self
+                            vm->stackTop[-argCount - 1] = callVal;
+                            if (!callClosure(vm, AS_CLOSURE(closure), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                        } else if (getTable(&ins->table, string, &closure)) {
+                            /* If this is a field, its just a normal callable body */
+                            if (!callValue(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                        } else {
+                            msapi_runtimeError(vm, "Attempt to call a non-callable object");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+                        break;
+                    }
+                    case OBJ_ARRAY: {
+                        NativeMethodPtr ptr = NULL;
+                        bool found = getPtrTable(&vm->arrayMethods, string, (void*)&ptr);
 
+                        if (!found) {
+                            msapi_runtimeError(vm, "Attempt to invoke a nil value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        bool result = (*ptr)(vm, callVal.as.obj, argCount, shouldReturn);
+                        if (!result) return INTERPRET_RUNTIME_ERROR;
+                        break;
+                    }
+                    default: 
+                        msapi_runtimeError(vm, "Attempt to invoke a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+
+                }
                 frame = &vm->frames[vm->frameCount - 1];
                 break;
+
             }
             case OP_INHERIT: {
                 ObjClass* klass = AS_CLASS(peek(vm, 1));

@@ -108,6 +108,9 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
                 case OBJ_METHOD:
                     msapi_push(vm, OBJ(AS_METHOD(thing)->closure->function->name));
                     break;
+                case OBJ_TABLE:
+                    msapi_push(vm, OBJ(allocateString(vm, "table", 5)));
+                    break;
                 default: msapi_push(vm, NIL()); break;
             }
             break;
@@ -204,6 +207,14 @@ bool msglobal_type(VM *vm, int argCount, int returnCount) {
                     break;
                 }
                 case OBJ_METHOD: {
+                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
+                    break;
+                }
+                case OBJ_TABLE: {
+                    msapi_push(vm, OBJ(allocateString(vm, "table", 5)));
+                    break;
+                }
+                case OBJ_NATIVE_METHOD: {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }

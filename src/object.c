@@ -186,14 +186,42 @@ ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure) {
     return method;
 }
 
+ObjTable* allocateTable(VM* vm) {
+    ObjTable* table = (ObjTable*)allocateObject(vm, sizeof(ObjTable), OBJ_TABLE);
+    initTable(&table->table);
+
+    return table;
+}
+
+ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self, 
+        NativeMethodPtr methodPtr) {
+    ObjNativeMethod* method = (ObjNativeMethod*)allocateObject(vm, 
+            sizeof(ObjNativeMethod), OBJ_NATIVE_METHOD);
+
+    method->name = name;
+    method->function = methodPtr;
+    method->self = self;
+
+    return method;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
             printf("%s", AS_NATIVE_STRING(value));
             break;
-        case OBJ_ARRAY:
-            printf("Array <len:%d>", AS_ARRAY(value)->array.count);
+        case OBJ_ARRAY: {
+            ObjArray* array = AS_ARRAY(value);
+            printf("[");
+            for (int i = 0; i < array->array.count; i++) {
+                printValue(array->array.values[i]);
+                if (i != array->array.count - 1) {
+                    printf(", ");
+                }
+            }
+            printf("]");
             break;
+        }
         case OBJ_FUNCTION:
             printf("Raw Function <%s>", AS_FUNCTION(value)->name->allocated);
             break;
@@ -214,6 +242,33 @@ void printObject(Value value) {
             break;
         case OBJ_METHOD:
             printf("Method <%s>", AS_METHOD(value)->closure->function->name->allocated);
+            break;
+        case OBJ_TABLE: {
+            ObjTable* table = AS_TABLE(value);
+        
+            bool first = false;
+            printf("{");
+            for (int i = 0; i < table->table.capacity; i++) {
+                Entry entry = table->table.entries[i];
+
+                if (entry.key != NULL) {
+                    if (!first) {
+                        first = true;
+                    } else {
+                        printf(", ");
+                    }
+                    printf("\"");
+                    printObject(OBJ(entry.key));
+                    printf("\"");
+                    printf(" : ");
+                    printValue(entry.value);
+                }
+            }
+            printf("}");
+            break;
+        }
+        case OBJ_NATIVE_METHOD:
+            printf("Native Method <%s>", AS_NATIVE_METHOD(value)->name->allocated);
             break;
         default: return;
     }
@@ -279,6 +334,16 @@ void freeObject(VM* vm, Obj* obj) {
         }
         case OBJ_METHOD: {
             reallocate(vm, (ObjMethod*)obj, sizeof(ObjMethod), 0);
+            break;
+        }
+        case OBJ_TABLE: {
+            ObjTable* table = (ObjTable*)obj;
+            freeTable(&table->table);
+            reallocate(vm, table, sizeof(ObjTable), 0);
+            break;
+        }
+        case OBJ_NATIVE_METHOD: {
+            reallocate(vm, (ObjNativeMethod*)obj, sizeof(ObjNativeMethod), 0);
             break;
         }
         default: return;

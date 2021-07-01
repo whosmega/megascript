@@ -175,6 +175,14 @@ func test_expressions():
     return true 
 end 
 
+func test_table():
+    var table = {}
+    table["abc"] = 100
+    if table["abc"] != 100: return false end 
+
+    return true 
+end 
+
 var tests = [
     test_or_and,
     test_lvars,
@@ -184,7 +192,8 @@ var tests = [
     test_for,
     test_class,
     test_class_inheritance,
-    test_expressions
+    test_expressions,
+    test_table
 ]
 
 for i, v in tests:

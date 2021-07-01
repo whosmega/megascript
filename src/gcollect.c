@@ -167,6 +167,17 @@ void blackenObject(VM* vm, Obj* obj) {
             markObject(vm, &method->self->obj);
             break;
         }
+        case OBJ_TABLE: {
+            ObjTable* table = (ObjTable*)obj;
+            markTable(vm, &table->table);
+            break;
+        }
+        case OBJ_NATIVE_METHOD: {
+            ObjNativeMethod* nativeMethod = (ObjNativeMethod*)obj;
+            markObject(vm, nativeMethod->self);
+            markObject(vm, &nativeMethod->name->obj);
+            break;
+        }
         default: return;
     }
 }

@@ -1,10 +1,12 @@
 #ifndef ms_object_h
 #define ms_object_h 
+
 #include "../includes/common.h"
 #include "../includes/value.h"
 #include "../includes/vm.h"
 
 typedef bool (*NativeFuncPtr)(VM*, int, int);
+typedef bool (*NativeMethodPtr)(VM* vm, Obj* self, int argCount, bool shouldReturn);
 
 #define CHECK_STRING(val) \
     (isObjType(val, OBJ_STRING))
@@ -32,6 +34,12 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 
 #define CHECK_METHOD(val) \
     (isObjType(val, OBJ_METHOD))
+
+#define CHECK_TABLE(val) \
+    (isObjType(val, OBJ_TABLE))
+
+#define CHECK_NATIVE_METHOD(val) \
+    (isObjType(val, OBJ_NATIVE_METHOD))
 
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
@@ -66,6 +74,12 @@ typedef bool (*NativeFuncPtr)(VM*, int, int);
 #define AS_METHOD(val) \
     ((ObjMethod*)AS_OBJ(val))
 
+#define AS_TABLE(val) \
+    ((ObjTable*)AS_OBJ(val))
+
+#define AS_NATIVE_METHOD(val) \
+    ((ObjNativeMethod*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
@@ -77,7 +91,9 @@ typedef enum {
     OBJ_NATIVE_FUNCTION,
     OBJ_CLASS,
     OBJ_INSTANCE,
-    OBJ_METHOD
+    OBJ_METHOD,
+    OBJ_TABLE,
+    OBJ_NATIVE_METHOD
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -146,6 +162,18 @@ struct ObjMethod {
     ObjClosure* closure;
 };
 
+struct ObjTable {
+    OBJ_HEAD;
+    Table table;
+};
+
+struct ObjNativeMethod {
+    OBJ_HEAD;
+    ObjString* name;
+    Obj* self;
+    NativeMethodPtr function;
+};
+
 ObjString* allocateRawString(VM* vm, int length);
 ObjString* allocateString(VM* vm, const char* chars, int length);
 ObjString* strConcat(VM* vm, Value val1, Value val2);
@@ -159,7 +187,9 @@ ObjClosure* allocateClosure(VM* vm, ObjFunction* function);
 ObjUpvalue* allocateUpvalue(VM* vm, Value* value);
 ObjClass* allocateClass(VM* vm, ObjString* name);
 ObjInstance* allocateInstance(VM* vm, ObjClass* klass);
+ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self, NativeMethodPtr methodPtr);
 ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
+ObjTable* allocateTable(VM* vm);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 

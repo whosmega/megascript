@@ -1,11 +1,6 @@
-class A:
-    func over(): return 1 end 
-end 
+var string = "Whos_Mega"
 
-class B inherits A:
-    func _init():
-        print(super.over())
-    end 
-end 
-
-B()
+for i in 0, #string - 1:
+  var char = string[i]
+  print(char)
+end

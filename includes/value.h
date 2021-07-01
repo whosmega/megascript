@@ -25,6 +25,8 @@ typedef struct ObjUpvalue ObjUpvalue;
 typedef struct ObjClass ObjClass;
 typedef struct ObjInstance ObjInstance;
 typedef struct ObjMethod ObjMethod;
+typedef struct ObjTable ObjTable;
+typedef struct ObjNativeMethod ObjNativeMethod;
 /* - - - - - - - - - - - - - -*/
 
 typedef struct {

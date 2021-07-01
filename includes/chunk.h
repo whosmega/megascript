@@ -77,15 +77,17 @@ typedef enum {
                                                    popped from stack in order */ 
                                                    
     OP_ARRAY_INS,                               /* Insert new element to the last slot
-                                                   Doesnt pop off the array */
-    OP_ARRAY_PINS,                              /* same as above but pops the array */
-    OP_ARRAY_MOD,                               /* modify element at the given index */
-    OP_ARRAY_PLUS_MOD,
-    OP_ARRAY_MIN_MOD,
-    OP_ARRAY_MUL_MOD,
-    OP_ARRAY_DIV_MOD,
-    OP_ARRAY_POW_MOD,
-    OP_ARRAY_GET,                               /* push element at the given index */ 
+                                                   Doesnt pop off the array */ 
+    OP_TABLE_INS,
+    OP_TABLE_INS_LONG,
+    OP_TABLE, 
+    OP_CUSTOM_INDEX_MOD,                               /* modify element at the given index */
+    OP_CUSTOM_INDEX_PLUS_MOD,
+    OP_CUSTOM_INDEX_SUB_MOD,
+    OP_CUSTOM_INDEX_MUL_MOD,
+    OP_CUSTOM_INDEX_DIV_MOD,
+    OP_CUSTOM_INDEX_POW_MOD,
+    OP_CUSTOM_INDEX_GET,                               /* push element at the given index */ 
     OP_ARRAY_RANGE,                             /* Range operation on array */ 
     OP_ITERATE,                                 /* takes index of index and value local variables 
                                                    located on the stack, increments the index, and updates the value, pushes true or false to indicate whether to continue or break */ 

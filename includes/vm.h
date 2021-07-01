@@ -1,5 +1,6 @@
 #ifndef ms_vm_h
 #define ms_vm_h
+
 #include "../includes/value.h"
 #include "../includes/table.h"
 #include "../includes/chunk.h"
@@ -26,12 +27,16 @@ typedef struct {
     Value* stackTop;
     Table strings;          /* Used for string interning */
     Table globals;
+    
+    PtrTable arrayMethods;     /* Used for storing methods for arrays */ 
+
     Obj* ObjHead;       /* Used for tracking the object linked list */
     ObjUpvalue* UpvalueHead;
     size_t bytesAllocated;
     size_t nextGC;
     bool running;
 } VM;
+
 
 typedef enum {
     INTERPRET_OK,
@@ -45,6 +50,8 @@ void freeVM(VM* vm);
 InterpretResult interpret(VM* vm, ObjFunction* function);
 void resetStack(VM* vm);
 
+
+bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn); 
 /*          API             */ 
 void msapi_runtimeError(VM* vm, const char* format, ...); 
 bool msapi_pushCallFrame(VM* vm, ObjClosure* closure);
