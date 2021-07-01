@@ -13,7 +13,7 @@ void initTable(Table* table) {
 }
 
 static Entry* probeEntrySlot(Entry* entries, int capacity, ObjString* key) {
-    uint32_t index = key->obj.hash % capacity;
+    uint32_t index = key->obj.hash & (capacity - 1);
     for (;;) {
         Entry* entry = &entries[index];
         Entry* tombstone = NULL;
@@ -34,7 +34,7 @@ static Entry* probeEntrySlot(Entry* entries, int capacity, ObjString* key) {
         }
         
         /* the entry wasnt empty, so continue the linear search */
-        index = (index + 1) % capacity;
+        index = (index + 1) & (capacity - 1);
     }
     
 }
@@ -110,7 +110,7 @@ void copyTableAll(Table* from, Table* to) {
 
 ObjString* findStringTable(Table* table, char* chars, int length, uint32_t hash) {
     if (table->count == 0) return NULL;
-    uint32_t index = hash % table->capacity;
+    uint32_t index = hash & (table->capacity - 1);
     for (;;) {
         Entry* entry = &table->entries[index];
         if (entry->key == NULL) {
@@ -122,7 +122,7 @@ ObjString* findStringTable(Table* table, char* chars, int length, uint32_t hash)
                    memcmp(&entry->key->allocated, chars, length) == 0) {
             return entry->key;
         }
-        index = (index + 1) % table->capacity;    
+        index = (index + 1) & (table->capacity - 1);    
     }
 
 }
