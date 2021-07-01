@@ -1,6 +1,0 @@
-var string = "Whos_Mega"
-
-for i in 0, #string - 1:
-  var char = string[i]
-  print(char)
-end
