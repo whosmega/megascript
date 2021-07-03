@@ -29,6 +29,8 @@ typedef struct {
     Table globals;
     
     PtrTable arrayMethods;     /* Used for storing methods for arrays */ 
+    PtrTable stringMethods;     
+    PtrTable tableMethods;
 
     Obj* ObjHead;       /* Used for tracking the object linked list */
     ObjUpvalue* UpvalueHead;
@@ -52,6 +54,9 @@ void resetStack(VM* vm);
 
 
 bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn); 
+bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn);
+bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn);
+bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn);
 /*          API             */ 
 void msapi_runtimeError(VM* vm, const char* format, ...); 
 bool msapi_pushCallFrame(VM* vm, ObjClosure* closure);

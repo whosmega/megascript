@@ -81,8 +81,23 @@ void markTable(VM* vm, Table* table) {
     /* We iterate through the hash table and mark the key as well as its actual value */ 
     for (int i = 0; i < table->capacity; i++) {
         Entry* entry = &table->entries[i];
-        markObject(vm, &entry->key->obj);
-        markValue(vm, entry->value);
+
+        if (entry->key != NULL) {
+            markObject(vm, &entry->key->obj);
+            markValue(vm, entry->value);
+        }
+    }
+}
+
+void markPtrTable(VM* vm, PtrTable* table) {
+    /* Mark only keys */ 
+
+    for (int i = 0; i < table->capacity; i++) {
+        PtrEntry* entry = &table->entries[i];
+
+        if (entry->key != NULL) {
+            markObject(vm, (Obj*)table->entries[i].key);
+        }
     }
 }
 
@@ -98,8 +113,10 @@ void markRoots(VM* vm) {
 
     /* Mark hash tables such as the VMs global environment */ 
     markTable(vm, &vm->globals);
-
-    /* Mark the running functions in the call stack */ 
+    markPtrTable(vm, &vm->arrayMethods);
+    markPtrTable(vm, &vm->stringMethods);
+    markPtrTable(vm, &vm->tableMethods);
+     /* Mark the running functions in the call stack */ 
     for (int i = 0; i < vm->frameCount; i++) {
         CallFrame frame = vm->frames[i];
         markObject(vm, (Obj*)frame.closure);

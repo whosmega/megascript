@@ -199,16 +199,11 @@ static void emitLongOperand(Parser* parser, uint16_t op, uint8_t ins1, uint8_t i
     }
 }
 
-static unsigned int emitJump(Parser* parser, uint8_t ins1, uint8_t ins2) {
-    unsigned int index = currentChunk(parser)->elem_count + 1;
-    
-    if ((index - 1) <= UINT8_MAX) {
-        emitBytes(parser, ins1, 0xff);
-    } else {
-        emitLongOperand(parser, 0xffff, ins2, ins2);
-    }
-
-    return index;
+static unsigned int emitJump(Parser* parser, uint8_t instruction) {
+    unsigned int index = currentChunk(parser)->elem_count - 1;
+    emitByte(parser, instruction);
+    emitBytes(parser, 0xff, 0xff);
+    return index + 2;       // return index of first operand
 }
 
 static void patchMisc(Parser* parser, unsigned int index, uint8_t value) {
@@ -216,36 +211,30 @@ static void patchMisc(Parser* parser, unsigned int index, uint8_t value) {
 }
 
 static void patch(Parser* parser, unsigned int index) {
-    /* Takes index of the jump instruction, and patches it to the current location */
-    uint8_t instruction = currentChunk(parser)->code[index - 1];
-    /* Minus one because instructions are base 0, while the actual count is base 1 */
-    uint16_t offset = currentChunk(parser)->elem_count - index - 1;
+    /* Takes index of the first byte of jump instruction, and patches it to the current location */
+    int extra = -1;
 
-    if (instruction == OP_JMP || instruction == OP_JMP_FALSE || instruction == OP_JMP_AND
-        || instruction == OP_JMP_OR) {
-        /* 8 bit */ 
-        currentChunk(parser)->code[index] = (uint8_t)offset;
-    } else if (instruction == OP_JMP_LONG || instruction == OP_JMP_FALSE_LONG || instruction == OP_JMP_AND_LONG || instruction == OP_JMP_OR_LONG) {
-       writeLongByteAt(currentChunk(parser), offset, index, parser->previous.line); 
-    }
+    int currentIndex = currentChunk(parser)->elem_count - 1;
+    writeLongByteAt(currentChunk(parser), currentIndex - index + extra, index, parser->previous.line); 
 }
 
 static void patchBreak(Parser* parser, unsigned int index, uint8_t localCount) {
-    /* Takes index of jump instruction and calculates the location of the 
+    /* Takes index of jump instruction's first operand byte and calculates the location of the 
      * popn operand, then fills it with the appropriate count to pop 
      * the locals */ 
 
     unsigned int operand = index - 2; 
-    printf("%u\n", currentChunk(parser)->code[operand]);
     currentChunk(parser)->code[operand] = localCount;
 }
 
 static void emitJumpBack(Parser* parser, unsigned int index) {
 
     /* Compiles a jump instruction that jumps back to the given index */
-
-    uint16_t offset = currentChunk(parser)->elem_count - index + 2;
-    emitLongOperand(parser, offset, OP_JMP_BACK, OP_JMP_BACK_LONG); 
+    int currentIndex = currentChunk(parser)->elem_count - 1;
+    uint16_t offset = currentIndex - index;
+    emitByte(parser, OP_JMP_BACK);
+    // + 3 is the extra offset required by OP_JMP_BACK 
+    writeLongByte(currentChunk(parser), offset + 3, parser->previous.line);
 }
 
 static void emitClosureEncoding(Parser* parser, Compiler* compiler) {
@@ -275,7 +264,7 @@ static void or(Scanner* scanner, Parser* parser) {
 
     while (parser->current.type == TOKEN_OR) {
         advance(scanner, parser);
-        int jumpIndex = emitJump(parser, OP_JMP_OR, OP_JMP_OR_LONG); 
+        int jumpIndex = emitJump(parser, OP_JMP_OR); 
         and(scanner, parser);
         patch(parser, jumpIndex);
     }
@@ -286,7 +275,7 @@ static void and(Scanner* scanner, Parser* parser) {
 
     while (parser->current.type == TOKEN_AND) {
         advance(scanner, parser);
-        int jumpIndex = emitJump(parser, OP_JMP_AND, OP_JMP_AND_LONG);
+        int jumpIndex = emitJump(parser, OP_JMP_AND);
         equality(scanner, parser);
         patch(parser, jumpIndex);
     }
@@ -1220,7 +1209,7 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     bool elseIfFound = false;
     bool elseFound = false;
     unsigned int latestElseIfIndex = 0;
-    unsigned int ifIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    unsigned int ifIndex = emitJump(parser, OP_JMP_FALSE);
      
     while (parser->current.type != TOKEN_EOF &&
           parser->current.type != TOKEN_ELSE && 
@@ -1228,7 +1217,7 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
           parser->current.type != TOKEN_END) {
         statement(scanner, parser);
     }
-    writeUintArray(&patchIndexes, emitJump(parser, OP_JMP, OP_JMP_LONG));
+    writeUintArray(&patchIndexes, emitJump(parser, OP_JMP));
 
     if (parser->current.type == TOKEN_EOF) {
         errorAtCurrent(parser, "Unclosed If-Block");
@@ -1248,7 +1237,7 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
         advance(scanner, parser);
         expression(scanner, parser);
         consume(scanner, parser, TOKEN_COLON, "Expected an ':' in else-if clause");
-        latestElseIfIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+        latestElseIfIndex = emitJump(parser, OP_JMP_FALSE);
 
         while (parser->current.type != TOKEN_EOF &&
                parser->current.type != TOKEN_ELSEIF &&
@@ -1256,7 +1245,7 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
                parser->current.type != TOKEN_END) {
             statement(scanner, parser);
         }
-        writeUintArray(&patchIndexes, emitJump(parser, OP_JMP, OP_JMP_LONG));
+        writeUintArray(&patchIndexes, emitJump(parser, OP_JMP));
 
     }
 
@@ -1284,24 +1273,27 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     }
 
     consume(scanner, parser, TOKEN_END, "Expected an 'end'");  
+
     
+    
+    /* Patch all the OP_JMP indexes to the end point */ 
+    for (int i = 0; i < patchIndexes.count; i++) {
+        patch(parser, getUintArray(&patchIndexes, i));
+    }
+    endScope(parser);
+
     if (!elseIfFound && !elseFound) {
         /* patch the unpatched OP_JMP_FALSE */
         patch(parser, ifIndex);
     }
 
-    /* Patch all the OP_JMP indexes to the end point */ 
-    for (int i = 0; i < patchIndexes.count; i++) {
-        patch(parser, getUintArray(&patchIndexes, i));
-    }
 
-    endScope(parser);
     freeUintArray(&patchIndexes);
 }
 
 static void parseWhileStatement(Scanner* scanner, Parser* parser) {
     /* Store the index of the jump */
-    unsigned int index = currentChunk(parser)->elem_count; 
+    unsigned int index = currentChunk(parser)->elem_count - 1; 
 
     /* Store the old state of the arrays
      * And replace it with another one which gets patched */
@@ -1316,7 +1308,7 @@ static void parseWhileStatement(Scanner* scanner, Parser* parser) {
     expression(scanner, parser);
     consume(scanner, parser, TOKEN_COLON, "Expected in ':' in while statement");
 
-    unsigned int falseIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    unsigned int falseIndex = emitJump(parser, OP_JMP_FALSE);
     
     beginScope(parser);
     while (parser->current.type != TOKEN_EOF &&
@@ -1355,11 +1347,12 @@ static void parseBreak(Scanner* scanner, Parser* parser) {
     }
     
     emitBytes(parser, OP_POPN, 0xff);           // Loop will patch this // 
-    writeUintArray(parser->unpatchedBreaks, emitJump(parser, OP_JMP, OP_JMP_LONG));
+    writeUintArray(parser->unpatchedBreaks, emitJump(parser, OP_JMP));
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
-static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentifier) {
+static void parseNumericFor(Scanner* scanner, Parser* parser, 
+        Token indexIdentifier, UintArray* oldBreakArray) {
     /* 'start' sig temps should already be pushed, index identifier should
      * already be a valid local in the outer scope,
      * compile the stop and increment */ 
@@ -1378,14 +1371,14 @@ static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentif
 
     // For loop begins
     beginScope(parser);
-    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count;
+    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count - 1;
     emitBytes(parser, OP_ITERATE_NUM, (uint8_t)resolveLocal(parser->compiler, indexIdentifier));
-    unsigned int forLoopJmpIndex = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    unsigned int forLoopJmpIndex = emitJump(parser, OP_JMP_FALSE);
     
     while (parser->current.type != TOKEN_END && parser->current.type != TOKEN_EOF) {
         statement(scanner, parser);
     }
-    endScope(parser);
+    int vars = endScope(parser);
     emitJumpBack(parser, forLoopTopIndex);
     patch(parser, forLoopJmpIndex);
     parser->compiler->significantTemps -= 3;
@@ -1393,6 +1386,21 @@ static void parseNumericFor(Scanner* scanner, Parser* parser, Token indexIdentif
     endScope(parser);
     consume(scanner, parser, TOKEN_END, "Expected an 'end' to close numeric for loop");
     
+    /* Restore the old state and patch all jumps */ 
+    
+    UintArray* newBreakArray = parser->unpatchedBreaks;
+    parser->unpatchedBreaks = oldBreakArray;
+
+    for (unsigned int i = 0; i < newBreakArray->count; i++) {
+        unsigned int index = getUintArray(newBreakArray, i);
+        patch(parser, index);
+        patchBreak(parser, index, vars);
+    }
+
+    
+    freeUintArray(newBreakArray);
+    ///////////////////////////////////////////////
+
 }
 
 static void parseForStatement(Scanner* scanner, Parser* parser) {
@@ -1402,6 +1410,16 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
     Token indexIdentifier = parser->previous;
     Token valueIdentifier;
     bool foundValueId = false; 
+    
+    /* Store the old state of the arrays
+     * And replace it with another one which gets patched */
+    UintArray* oldBreakArray = parser->unpatchedBreaks;
+    UintArray newBreakArray;
+    parser->unpatchedBreaks = &newBreakArray;
+    initUintArray(parser->unpatchedBreaks);
+
+    /////////////////////////////////////////////
+
 
     emitByte(parser, OP_NIL);
     addLocal(parser, indexIdentifier);
@@ -1417,7 +1435,7 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
     expression(scanner, parser);        // Array              (sig temp)
 
     if (parser->current.type == TOKEN_COMMA && !foundValueId) {
-        parseNumericFor(scanner, parser, indexIdentifier);
+        parseNumericFor(scanner, parser, indexIdentifier, oldBreakArray);
         return;
     } 
 
@@ -1427,7 +1445,7 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
     consume(scanner, parser, TOKEN_COLON, "Expected an ':' in for loop");
     beginScope(parser);
     // For loop starts 
-    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count;
+    unsigned int forLoopTopIndex = currentChunk(parser)->elem_count - 1;
     
     if (foundValueId) {
         emitByte(parser, OP_ITERATE_VALUE);
@@ -1442,19 +1460,35 @@ static void parseForStatement(Scanner* scanner, Parser* parser) {
         );
     }
 
-    unsigned int forLoopTopJmp = emitJump(parser, OP_JMP_FALSE, OP_JMP_FALSE_LONG);
+    unsigned int forLoopTopJmp = emitJump(parser, OP_JMP_FALSE);
     while (parser->current.type != TOKEN_EOF &&
            parser->current.type != TOKEN_END) {
         
         statement(scanner, parser);
     }
-    endScope(parser);
+    int vars = endScope(parser);
     emitJumpBack(parser, forLoopTopIndex);
 
     patch(parser, forLoopTopJmp);
     emitBytes(parser, OP_POPN, (uint8_t)2);           // pop the array and indexholder
     parser->compiler->significantTemps -= 2;
     endScope(parser);
+
+    /* Restore the old state and patch all jumps */ 
+
+    parser->unpatchedBreaks = oldBreakArray;
+
+    for (unsigned int i = 0; i < newBreakArray.count; i++) {
+        unsigned int index = getUintArray(&newBreakArray, i);
+        patch(parser, index);
+        patchBreak(parser, index, vars);
+    }
+
+    
+    freeUintArray(&newBreakArray);
+    ///////////////////////////////////////////////
+
+
     consume(scanner, parser, TOKEN_END, "Expected an 'end' to close for loop");
 }
 

@@ -1,0 +1,161 @@
+class Token:
+    func _init(lexeme, type):
+        self.lexeme = lexeme 
+        self.type = type 
+    end 
+
+    func print():
+        if self.lexeme:
+            print(self.type + " : " + self.lexeme)
+        else:
+            print(self.type)
+        end 
+    end 
+end 
+
+class Lexer:
+    canRun = true
+
+    func _init(string):
+        if type(string) != "string":
+            print("Expected a string for json input")
+            self.canRun = false 
+            return 
+        end 
+
+        if string == "":
+            print("Got empty string for input")
+            self.canRun = false
+            return 
+        end 
+
+        self.string = string 
+        self.tokens = [] 
+    end 
+
+    func scan():
+        if !self.canRun: return end 
+        self.i = 0
+        while self.i < #self.string:
+            var char = self.string[self.i]
+
+            if char == '{':
+                self.simpleToken("TOKEN_CURLY_OPEN")
+            elseif char == '}':
+                self.simpleToken("TOKEN_CURLY_CLOSE")
+            elseif char == "[":
+                self.simpleToken("TOKEN_SQUARE_OPEN")
+            elseif char == "]":
+                self.simpleToken("TOKEN_SQUARE_CLOSE")
+            elseif char == ":":
+                self.simpleToken("TOKEN_COLON")
+            elseif char == ",":
+                self.simpleToken("TOKEN_COMMA")
+            elseif char == "\"":
+                if !self.scanString(): break end 
+            elseif self.isDigit(char): 
+                if !self.scanNumber(): break end 
+            elseif char == "t":
+                self.scanSpecial("t")
+            elseif char == "f":
+                self.scanSpecial("f")
+            elseif char == "n":
+                self.scanSpecial("n")
+            elseif char == "\n":
+            elseif char == "\t":
+            elseif char == " ":
+            else:
+                print("Unknown character : " + char)
+                break
+            end
+            self.i = self.i + 1 
+        end 
+        return self.tokens
+    end 
+    
+    func scanString():
+        self.i = self.i + 1     // the '"' 
+        var stringStart = self.i
+        while self.i < #self.string - 1 and self.string[self.i] != "\"":
+            self.i = self.i + 1
+        end
+
+        if self.string[self.i] != "\"":
+            print("Unterminated String")
+            return false
+        end
+        
+        var stringEnd = self.i - 1
+        if stringStart > stringEnd:
+            self.lexemeToken("", "TOKEN_STRING")
+        else:
+            self.lexemeToken(self.string.capture(stringStart, stringEnd), "TOKEN_STRING")
+        end
+
+        return true 
+    end
+   
+    func scanNumber():
+        var numberStart = self.i 
+        
+        while self.i < #self.string - 1 and self.isDigit(self.string[self.i]):
+            self.i = self.i + 1
+        end
+        
+        if self.string[self.i] == ".":
+            self.i = self.i + 1 
+            var first = false
+            while self.i < #self.string and self.isDigit(self.string[self.i]):
+                first = true 
+                self.i = self.i + 1 
+            end 
+
+            if !first:
+                print("No decimal digits after '.'")
+                return false 
+            end 
+        end 
+        
+        var numberEnd = self.i - 1
+        if numberEnd < numberStart:
+            numberEnd += 1 
+        end 
+
+        self.lexemeToken(self.string.capture(numberStart, numberEnd), "TOKEN_NUMBER")
+        return true 
+    end
+    
+    func scanSpecial(char):
+        var remaining = #self.string - 1 - self.i 
+        
+        if remaining >= 4 and self.string.capture(self.i, self.i + 4) == "false":
+            self.i = self.i + 4 
+            self.simpleToken("TOKEN_FALSE")
+        elseif remaining >= 3 and self.string.capture(self.i, self.i + 3) == "true":
+            self.simpleToken("TOKEN_TRUE")
+            self.i = self.i + 3 
+        elseif remaining >= 3 and self.string.capture(self.i, self.i + 3) == "null":
+            self.simpleToken("TOKEN_NULL")
+            self.i = self.i + 3 
+        end  
+    end 
+            
+
+    func lexemeToken(lexeme, type):
+        self.tokens.insert(Token(lexeme, type))
+    end
+
+    func simpleToken(type):
+        self.tokens.insert(Token(nil, type))
+    end
+
+    func isDigit(char):
+        return char.getAscii() >= '0'.getAscii() and char.getAscii() <= '9'.getAscii()
+    end 
+end 
+
+var tokens = Lexer("false true   null false {}").scan()
+
+for i, v in tokens:
+    v.print()
+end 

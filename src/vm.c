@@ -59,6 +59,20 @@ static void injectArrayMethods(VM* vm) {
     insertPtrTable(&vm->arrayMethods, string, &msmethod_array_insert);
 }
 
+static void injectStringMethods(VM* vm) {
+    ObjString* captureString = allocateString(vm, "capture", 7);
+    ObjString* getAsciiString = allocateString(vm, "getAscii", 8);
+
+    insertPtrTable(&vm->stringMethods, getAsciiString, &msmethod_string_getAscii);
+    insertPtrTable(&vm->stringMethods, captureString, &msmethod_string_capture);
+}
+
+static void injectTableMethods(VM* vm) {
+    ObjString* string = allocateString(vm, "keys", 4);
+
+    insertPtrTable(&vm->tableMethods, string, &msmethod_table_keys);
+}
+
 void initVM(VM* vm) {
     vm->frameCount = 0;
     vm->ObjHead = NULL;
@@ -70,11 +84,15 @@ void initVM(VM* vm) {
     initTable(&vm->strings);
     initTable(&vm->globals);
     initPtrTable(&vm->arrayMethods);
+    initPtrTable(&vm->stringMethods);
+    initPtrTable(&vm->tableMethods);
     resetStack(vm);
     vm->running = false;
 
     
     injectArrayMethods(vm);
+    injectStringMethods(vm);
+    injectTableMethods(vm);
     // Setup globals 
     injectGlobals(vm);
 }
@@ -83,6 +101,8 @@ void freeVM(VM* vm) {
     freeTable(&vm->strings);
     freeTable(&vm->globals);
     freePtrTable(&vm->arrayMethods);
+    freePtrTable(&vm->stringMethods);
+    freePtrTable(&vm->tableMethods);
     freeObjects(vm);
     FREE_ARRAY(Obj*, vm->greyStack, vm->greyCapacity);
 }
@@ -194,6 +214,23 @@ void msapi_popn(VM* vm, unsigned int count) {
 }
 
 //--------------------------------------------
+
+static bool invokeNativeMethod(VM* vm, ObjString* string, Obj* self, 
+        int argCount, bool shouldReturn, PtrTable* ptrTable) {
+
+    NativeMethodPtr ptr = NULL;
+    bool found = getPtrTable(ptrTable, string, (void*)&ptr);
+
+    if (!found) {
+        msapi_runtimeError(vm, "Attempt to invoke a nil value");
+        return false;
+    }
+
+    bool result = (*ptr)(vm, self, argCount, shouldReturn);
+    if (!result) return false;
+
+    return true;
+}
 
 static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount) {
     ObjFunction* function = closure->function;
@@ -406,6 +443,97 @@ bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (shouldReturn) push(vm, NIL());
     return true;
 }
+
+bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    ObjString* string = (ObjString*)self;
+    popn(vm, argCount + 1);
+        
+    if (string->length < 1) {
+        msapi_runtimeError(vm, "Got empty string");
+        return false;
+    }
+    if (!shouldReturn) return true;
+
+    if (string->length == 1) {
+        push(vm, NATIVE_TO_NUMBER((double)string->allocated[0]));
+    } else {
+        ObjArray* array = allocateArray(vm);
+
+        for (int i = 0; i < string->length; i++) {
+            writeValueArray(&array->array, 
+                    NATIVE_TO_NUMBER((double)string->allocated[i]));
+        }
+        push(vm, OBJ(array));
+    }
+
+    return true;
+}
+
+bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    if (argCount < 2) {
+        msapi_runtimeError(vm, "Insufficient argument count");
+        return false;
+    }
+
+    if (!CHECK_NUMBER(peek(vm, 1)) || !CHECK_NUMBER(peek(vm, 0))) {
+        msapi_runtimeError(vm, "Expected arguments to be numberS");
+        return false;
+    }
+    
+    double arg1 = AS_NUMBER(peek(vm, 1));
+    double arg2 = AS_NUMBER(peek(vm, 0));
+
+    if (fmod(arg1, 1) != 0 || arg1 < 0) {
+        msapi_runtimeError(vm, "Expected 'start' to be a positive integer");
+        return false;
+    }
+
+    if (fmod(arg2, 1) != 0 || arg2 < 0) {
+        msapi_runtimeError(vm, "Expected 'end' to be a positive integer");
+        return false;
+    }
+
+    ObjString* string = (ObjString*)self;
+    if (arg1 >= string->length || arg1 < 0) {
+        msapi_runtimeError(vm, "Argument 'start' out of range");
+        return false;
+    }
+
+    if (arg2 >= string->length || arg2 < 0) {
+        msapi_runtimeError(vm, "Argument 'end' out of range");
+        return false;
+    }
+
+    if (arg1 > arg2) {
+        msapi_runtimeError(vm, "Argument 'start' cannot be greater than 'end'");
+        return false;
+    }
+    
+    popn(vm, argCount + 1);
+    
+    if (shouldReturn) {
+        push(vm, OBJ(allocateString(vm, &string->allocated[(int)arg1], arg2 - arg1 + 1)));
+    }
+    return true;
+}
+
+bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    if (!shouldReturn) return true;
+    ObjArray* array = allocateArray(vm);
+    ObjTable* table = (ObjTable*)self;
+
+    for (int i = 0; i < table->table.capacity; i++) {
+        Entry* entry = &table->table.entries[i];
+
+        if (entry->key != NULL) {
+            writeValueArray(&array->array, OBJ(entry->key));
+        }
+    }
+
+    popn(vm, argCount + 1);
+    push(vm, OBJ(array));
+    return true;
+}
 /* ---------------------------------------------- */
 
 static InterpretResult run(VM* vm) {
@@ -526,6 +654,37 @@ static InterpretResult run(VM* vm) {
                             push(vm, NIL());
                         }
                         break;
+                    }
+                    case OBJ_STRING: {
+                        NativeMethodPtr ptr = NULL;
+                        bool found = getPtrTable(&vm->stringMethods, fieldName, (void*)&ptr);
+
+                        popn(vm, 2);
+
+                        if (found) {
+                            push(vm, OBJ(
+                                        allocateNativeMethod(vm, fieldName,
+                                            (Obj*)AS_OBJ(getVal), ptr)));
+                        } else {
+                            push(vm, NIL());
+                        }
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        NativeMethodPtr ptr = NULL;
+                        bool found = getPtrTable(&vm->tableMethods, fieldName, (void*)&ptr);
+
+                        popn(vm, 2);
+
+                        if (found) {
+                            push(vm, OBJ(
+                                        allocateNativeMethod(vm, fieldName,
+                                            (Obj*)AS_OBJ(getVal), ptr)));
+                        } else {
+                            push(vm, NIL());
+                        }
+                        break;
+                    
                     }
                     default: 
                         msapi_runtimeError(vm, "Attempt to index a non-indexable object");
@@ -1153,17 +1312,12 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_JMP: {
-                /* Reads 8 bit */ 
-                frame->ip += READ_BYTE(frame);
-                break;
-            }
-            case OP_JMP_LONG: {
                 /* Reads 16 bit */ 
                 frame->ip += READ_LONG_BYTE(frame);
                 break;
             }
             case OP_JMP_OR: {
-                uint8_t byte = READ_BYTE(frame);
+                uint16_t byte = READ_LONG_BYTE(frame);
                 if (!isFalsey(peek(vm, 0))) {
                     frame->ip += byte; 
                 } else {
@@ -1171,35 +1325,18 @@ static InterpretResult run(VM* vm) {
                 }
                 break;
             }
-            case OP_JMP_OR_LONG: {
+           case OP_JMP_FALSE: {
+                /* Reads 16 bit */
                 uint16_t byte = READ_LONG_BYTE(frame);
-                if (!isFalsey(peek(vm, 0))) {
-                    frame->ip += byte;
-                } else {
-                    pop(vm);
-                }
-                break;
-            }
-            case OP_JMP_FALSE: {
-                /* Reads 8 bit */
-                uint8_t byte = READ_BYTE(frame);
                 if (isFalsey(pop(vm))) {
                     frame->ip += byte;
                 }
 
                 break;
             }
-            case OP_JMP_FALSE_LONG: {
-                /* Reads 16 bit */
-                uint16_t byte = READ_LONG_BYTE(frame);
-                if (!isFalsey(pop(vm))) break;
-                frame->ip += byte;
-                break;
-            
-            }
             case OP_JMP_AND: {
                 /* Unlike JMP_FALSE, this doesnt pop the value if its falsey */  
-                uint8_t byte = READ_BYTE(frame); 
+                uint16_t byte = READ_LONG_BYTE(frame); 
                 if (isFalsey(peek(vm, 0))) {
                     frame->ip += byte; 
                 } else {
@@ -1207,21 +1344,7 @@ static InterpretResult run(VM* vm) {
                 }
                 break;
             }
-            case OP_JMP_AND_LONG: {
-                uint16_t byte = READ_LONG_BYTE(frame);
-                if (isFalsey(peek(vm, 0))) {
-                    frame->ip += byte;
-                } else {
-                    pop(vm);
-                }
-                break;
-            }
             case OP_JMP_BACK: {
-                /* Reads 8 bit */ 
-                frame->ip -= READ_BYTE(frame);
-                break;
-            }
-            case OP_JMP_BACK_LONG: {
                 /* Reads 16 bit */ 
                 frame->ip -= READ_LONG_BYTE(frame);
                 break;
@@ -1265,15 +1388,23 @@ static InterpretResult run(VM* vm) {
                         break;
                     }
                     case OBJ_ARRAY: {
-                        NativeMethodPtr ptr = NULL;
-                        bool found = getPtrTable(&vm->arrayMethods, string, (void*)&ptr);
+                        bool result = invokeNativeMethod(vm, string, 
+                                callVal.as.obj, argCount, shouldReturn, &vm->arrayMethods);
 
-                        if (!found) {
-                            msapi_runtimeError(vm, "Attempt to invoke a nil value");
-                            return INTERPRET_RUNTIME_ERROR;
-                        }
+                        if (!result) return INTERPRET_RUNTIME_ERROR;
+                        break;
+                    }
+                    case OBJ_STRING: {
+                        bool result = invokeNativeMethod(vm, string,
+                                callVal.as.obj, argCount, shouldReturn, &vm->stringMethods);
 
-                        bool result = (*ptr)(vm, callVal.as.obj, argCount, shouldReturn);
+                        if (!result) return INTERPRET_RUNTIME_ERROR;
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        bool result = invokeNativeMethod(vm, string,
+                                callVal.as.obj, argCount, shouldReturn, &vm->tableMethods);
+
                         if (!result) return INTERPRET_RUNTIME_ERROR;
                         break;
                     }

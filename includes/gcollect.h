@@ -10,6 +10,7 @@ void markArray(VM* vm, ValueArray* array);
 void markValue(VM* vm, Value val);
 void markObject(VM* vm, Obj* obj);
 void markTable(VM* vm, Table* table);
+void markPtrTable(VM* vm, PtrTable* table);
 
 void sweep(VM* vm);
 void clearTableWeakref(VM* vm, Table* table);

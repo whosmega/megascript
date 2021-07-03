@@ -50,11 +50,10 @@ int doubleOperandInstruction(const char* insName, Chunk* chunk, int offset) {
 }
 
 int jumpInstruction(const char* insName, Chunk* chunk, int offset) {
-    uint8_t ins = chunk->code[offset + 1];
+    uint16_t ins = chunk->code[offset + 1] | chunk->code[offset + 2] << 8;
     printf("%-16s %4d\n", insName, ins);
-    return offset + 2;
+    return offset + 3;
 }
-
 
 int localInstruction(const char* insName, Chunk* chunk, int offset) {
     uint8_t localIndex = chunk->code[offset + 1];
