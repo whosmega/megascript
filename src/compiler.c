@@ -865,9 +865,8 @@ static void parseGrouping(Scanner* scanner, Parser* parser) {
     consume(scanner, parser, TOKEN_ROUND_CLOSE, "Expected a ')' to close expression (Syntax Error)"); 
 }
 
-static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);           // consume 'global'
-    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in global declaration");
+static void parseGlobalVarDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // consume the identifier
     Token identifier = parser->previous;
 
     if (match(scanner, parser, TOKEN_EQUAL)) {
@@ -876,7 +875,32 @@ static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
         emitByte(parser, OP_NIL);
     }
 
-    parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL);
+    parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL); 
+}
+
+static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);           // consume 'global'
+
+    switch (parser->current.type) {
+        case TOKEN_IDENTIFIER: 
+            parseGlobalVarDeclaration(scanner, parser);
+            break;
+        case TOKEN_CLASS:
+            break;
+        case TOKEN_FUNC:
+            advance(scanner, parser);
+            consume(scanner, parser, TOKEN_IDENTIFIER, 
+                    "Expected identifier in global function declaration");
+
+            Token identifier = parser->previous;
+            parseClosureFunction(scanner, parser, identifier, TYPE_NORMAL);
+            parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL);
+            break;
+        default:
+            errorAtCurrent(parser, "Unknown token at global declaration");
+            return;
+    }
+
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
