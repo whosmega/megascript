@@ -306,12 +306,11 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
             ObjClass* klass = AS_CLASS(value);
             ObjInstance* instance = allocateInstance(vm, klass); 
             Value _init;
-
             if (getTable(&klass->methods, allocateString(vm, "_init", 5), &_init)) {
-                vm->stackTop[-argCount - 1] = OBJ(instance);        // set self 
+                vm->stackTop[-argCount - 1] = OBJ(instance);        // set self
                 return callClosure(vm, AS_CLOSURE(_init), true, argCount);
             }
-
+            
             if (shouldReturn) {
                 popn(vm, argCount + 1);             // pop the args and the class
                 push(vm, OBJ(instance));

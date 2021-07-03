@@ -11,5 +11,6 @@ bool msglobal_str(VM* vm, int argCount, int returnCount);
 bool msglobal_num(VM* vm, int argCount, int returnCount);
 bool msglobal_clock(VM* vm, int argCount, int returnCount);
 bool msglobal_type(VM* vm, int argCount, int returnCount);
+bool msglobal_input(VM* vm, int argCount, int returnCount);
 
 #endif

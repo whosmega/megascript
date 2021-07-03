@@ -202,7 +202,6 @@ bool getPtrTable(PtrTable* table, ObjString* key, void** value) {
 void copyTableAll(Table* from, Table* to) {
     for (int i = 0 ; i < from->capacity; i++) {
         Entry* entry = &from->entries[i];
-
         if (entry->key != NULL) {
             insertTable(to, entry->key, entry->value);
         }

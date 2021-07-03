@@ -5,24 +5,18 @@ class Token:
     end 
 
     func print():
-        if self.lexeme:
-            print(self.type + " : " + self.lexeme)
-        else:
-            print(self.type)
-        end 
+        print(self.type + " : " + self.lexeme)
     end 
 end 
 
 class Lexer:
     canRun = true
-
     func _init(string):
         if type(string) != "string":
             print("Expected a string for json input")
             self.canRun = false 
             return 
         end 
-
         if string == "":
             print("Got empty string for input")
             self.canRun = false
@@ -40,21 +34,21 @@ class Lexer:
             var char = self.string[self.i]
 
             if char == '{':
-                self.simpleToken("TOKEN_CURLY_OPEN")
+                self.lexemeToken("{", "TOKEN_CURLY_OPEN")
             elseif char == '}':
-                self.simpleToken("TOKEN_CURLY_CLOSE")
+                self.lexemeToken("}", "TOKEN_CURLY_CLOSE")
             elseif char == "[":
-                self.simpleToken("TOKEN_SQUARE_OPEN")
+                self.lexemeToken("[", "TOKEN_SQUARE_OPEN")
             elseif char == "]":
-                self.simpleToken("TOKEN_SQUARE_CLOSE")
+                self.lexemeToken("]", "TOKEN_SQUARE_CLOSE")
             elseif char == ":":
-                self.simpleToken("TOKEN_COLON")
+                self.lexemeToken(":", "TOKEN_COLON")
             elseif char == ",":
-                self.simpleToken("TOKEN_COMMA")
+                self.lexemeToken(",", "TOKEN_COMMA")
             elseif char == "\"":
-                if !self.scanString(): break end 
+                if !self.scanString(): return false end 
             elseif self.isDigit(char): 
-                if !self.scanNumber(): break end 
+                if !self.scanNumber(): return false end 
             elseif char == "t":
                 self.scanSpecial("t")
             elseif char == "f":
@@ -66,10 +60,12 @@ class Lexer:
             elseif char == " ":
             else:
                 print("Unknown character : " + char)
-                break
+                return false
             end
             self.i = self.i + 1 
         end 
+
+        self.lexemeToken("", "TOKEN_EOF")
         return self.tokens
     end 
     
@@ -120,22 +116,24 @@ class Lexer:
         if numberEnd < numberStart:
             numberEnd += 1 
         end 
-
+        
         self.lexemeToken(self.string.capture(numberStart, numberEnd), "TOKEN_NUMBER")
+        self.i = self.i - 1             // undo the last character consumption by the while loop
         return true 
     end
     
     func scanSpecial(char):
+        var start = self.i
         var remaining = #self.string - 1 - self.i 
         
-        if remaining >= 4 and self.string.capture(self.i, self.i + 4) == "false":
+        if remaining >= 4 and self.string.capture(start, start + 4) == "false":
             self.i = self.i + 4 
-            self.simpleToken("TOKEN_FALSE")
-        elseif remaining >= 3 and self.string.capture(self.i, self.i + 3) == "true":
-            self.simpleToken("TOKEN_TRUE")
+            self.lexemeToken(self.string.capture(start, start + 4), "TOKEN_FALSE")
+        elseif remaining >= 3 and self.string.capture(start, start + 3) == "true":
+            self.lexemeToken(self.string.capture(start, start + 3), "TOKEN_TRUE")
             self.i = self.i + 3 
-        elseif remaining >= 3 and self.string.capture(self.i, self.i + 3) == "null":
-            self.simpleToken("TOKEN_NULL")
+        elseif remaining >= 3 and self.string.capture(start, start + 3) == "null":
+            self.lexemeToken(self.string.capture(start, start + 3), "TOKEN_NULL")
             self.i = self.i + 3 
         end  
     end 
@@ -145,17 +143,269 @@ class Lexer:
         self.tokens.insert(Token(lexeme, type))
     end
 
-    func simpleToken(type):
-        self.tokens.insert(Token(nil, type))
-    end
-
     func isDigit(char):
         return char.getAscii() >= '0'.getAscii() and char.getAscii() <= '9'.getAscii()
     end 
 end 
 
-var tokens = Lexer("false true   null false {}").scan()
+class Parser:
+    error = false 
 
-for i, v in tokens:
-    v.print()
+    func _init(tokens):
+        if #tokens < 1:
+            print("Got empty token array")
+            return
+        end 
+
+        self.tokens = tokens 
+        self.current = nil 
+        self.previous = nil 
+        self.index = 0 
+
+        self.advance()
+    end 
+        
+    func parse():
+        var object = self.Obj()
+        if self.error: return false end 
+        return object
+    end 
+
+    func advance():
+        self.previous = self.current 
+        self.current = self.tokens[self.index]
+        self.index = self.index + 1 
+    end 
+
+    func errorAtCurrent(errorMsg):
+        if self.error: return end 
+        var name = self.current.type == "TOKEN_EOF" and "end" or self.current.lexeme
+        print("Error at " + name + ": " + errorMsg)
+        self.advance()
+        self.error = true 
+    end 
+    
+    func errorAtPrevious(errorMsg):
+        if self.error: return end 
+        print("Error at " + self.previous.lexeme + ": " + errorMsg)
+        self.advance()
+        self.error = true
+    end
+    
+    func consume(tokenType, errorMsg):
+        if self.current.type != tokenType:
+            self.errorAtCurrent(errorMsg)
+            return 
+        end
+
+        self.advance()
+    end 
+    
+    func match(tokenType):
+        if self.current.type == tokenType:
+            self.advance()
+            return true
+        end 
+
+        return false 
+    end 
+
+    func Obj():
+        // only allows json objects or array objects 
+
+        if self.current.type == "TOKEN_CURLY_OPEN":
+            return self.jsonObj()
+        elseif self.current.type == "TOKEN_SQUARE_OPEN":
+            return self.arrayObj()
+        else:
+            self.errorAtCurrent("Expected object")
+            return false
+        end
+    end 
+
+    func jsonObj():
+        self.advance()          // the '{' 
+        
+        var table = {}
+        var first = true 
+
+        while self.current.type != "TOKEN_CURLY_CLOSE"
+                and self.current.type != "TOKEN_EOF":
+            if !first:
+                self.consume("TOKEN_COMMA", "Expected ',' between pairs")
+            end 
+
+            self.consume("TOKEN_STRING", "Expected string key in json object")
+            var key = self.previous 
+            self.consume("TOKEN_COLON", "Expected ':' after key in json object")
+            table[key.lexeme] = self.value()
+            first = false
+        end
+        
+        self.consume("TOKEN_CURLY_CLOSE", "Expected a '}' to close json object")
+
+        return table
+    end
+
+    func arrayObj():
+        self.advance()          // the '['
+
+        var array = [] 
+        var first = true
+            
+        while self.current.type != "TOKEN_SQUARE_CLOSE":
+            if !first:
+                self.consume("TOKEN_COMMA", "Expected ',' between values")
+            end 
+
+            array.insert(self.value())
+            first = false 
+        end
+
+        self.consume("TOKEN_SQUARE_CLOSE", "Expected a ']' to close json object")
+        return array
+    end 
+
+    func value():
+        if self.current.type == "TOKEN_STRING":
+            return self.string()
+        elseif self.current.type == "TOKEN_NUMBER":
+            return self.number()
+        elseif self.current.type == "TOKEN_NULL":
+            return self.null()
+        elseif self.current.type == "TOKEN_CURLY_OPEN":
+            return self.jsonObj()
+        elseif self.current.type == "TOKEN_SQUARE_OPEN":
+            return self.arrayObj()
+        elseif self.current.type == "TOKEN_TRUE":
+            return self._true()
+        elseif self.current.type == "TOKEN_FALSE":
+            return self._false()
+        elseif self.current.type == "TOKEN_NULL":
+            return self.null()
+        else:
+            self.advance()
+            self.errorAtPrevious("Expected value")
+        end 
+    end 
+
+    func string():
+        self.advance()
+        return self.previous.lexeme
+    end
+
+    func _false():
+        self.advance()
+        return false
+    end
+
+    func _true():
+        self.advance()
+        return true 
+    end 
+
+    func null():
+        self.advance()
+        return nil 
+    end 
+
+    func number():
+        self.advance()
+        return num(self.previous.lexeme) 
+    end 
+end 
+
+class Stringify:
+    error = false 
+    func _init(object):
+        self.object = object
+    end 
+
+    func stringify():
+        if type(self.object) == "table":
+            return self.table(self.object)
+        elseif type(self.object) == "array":
+            return self.array(self.object)
+        else:
+            self.error("Only tables and arrays are allowed")
+            return false  
+        end
+    end 
+
+    func error(errMsg):
+        if self.error: return end 
+        print("Error : " + errMsg)
+        self.error = true 
+    end 
+
+    func table(table):
+        var string = "{"
+        var first = true 
+
+        for _, key in table.keys():
+            if !first:
+                string += ", "
+            end 
+
+            var val = table[key] 
+            
+            string += "\"" + key + "\" : "
+            string += self.obj(val)
+            first = false 
+        end
+
+        string += "}"
+        return string 
+    end 
+
+    func array(array):
+        var string = "["
+        var first = true 
+
+        for _, value in array:
+            if !first:
+                string += ", "
+            end 
+
+            string += self.obj(value)
+            first = false 
+        end 
+
+        string += "]"
+        return string 
+    end 
+
+    func obj(obj):
+        if type(obj) == "string":
+            return "\"" + obj + "\"" 
+        elseif type(obj) == "number":
+            return str(obj)
+        elseif obj == nil:
+            return "null"
+        elseif obj == false: 
+            return "false"
+        elseif obj == true:
+            return "true"
+        elseif type(obj) == "table":
+            return self.table(obj)
+        elseif type(obj) == "array":
+            return self.array(obj)
+        else:
+            self.error("Unsupported type : " + type(obj))
+            return ""
+        end
+    end
+end
+
+func parse(string):
+    var tokens = Lexer(string).scan()
+    if !tokens: return false end 
+
+    return Parser(tokens).parse()
+end
+
+func stringify(object):
+    var string = Stringify(object).stringify()
+    if !string: return false end 
+    return string 
 end 

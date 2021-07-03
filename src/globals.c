@@ -3,6 +3,7 @@
 #include "../includes/value.h"
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
 
 void injectGlobals(VM* vm) {
     ObjString* str_print = allocateString(vm, "print", 5);
@@ -10,18 +11,21 @@ void injectGlobals(VM* vm) {
     ObjString* str_num = allocateString(vm, "num", 3);
     ObjString* str_clock = allocateString(vm, "clock", 5);
     ObjString* str_type = allocateString(vm, "type", 4);
+    ObjString* str_input = allocateString(vm, "input", 5);
 
     ObjNativeFunction* native_print = allocateNativeFunction(vm, str_print, &msglobal_print);
     ObjNativeFunction* native_clock = allocateNativeFunction(vm, str_clock, &msglobal_clock);
     ObjNativeFunction* native_str = allocateNativeFunction(vm, str_str, &msglobal_str);
     ObjNativeFunction* native_num = allocateNativeFunction(vm, str_num, &msglobal_num);
     ObjNativeFunction* native_type = allocateNativeFunction(vm, str_type, &msglobal_type);
+    ObjNativeFunction* native_input = allocateNativeFunction(vm, str_input, &msglobal_input);
 
     insertTable(&vm->globals, str_clock, OBJ(native_clock));
     insertTable(&vm->globals, str_str, OBJ(native_str));
     insertTable(&vm->globals, str_num, OBJ(native_num));
     insertTable(&vm->globals, str_type, OBJ(native_type));
     insertTable(&vm->globals, str_print, OBJ(native_print));
+    insertTable(&vm->globals, str_input, OBJ(native_input));
 }
 
 bool msglobal_print(VM* vm, int argCount, int returnCount) {
@@ -154,6 +158,31 @@ bool msglobal_num(VM* vm, int argCount, int returnCount) {
         msapi_push(vm, NATIVE_TO_NUMBER(num));
     }
 
+    return true;
+}
+
+bool msglobal_input(VM* vm, int argCount, int returnCount) {
+    if (argCount >= 1) {
+        Value value = msapi_peek(vm, 0);
+        printValue(value); 
+    }
+    char str[1000];
+    
+    if (!fgets(str, sizeof(str), stdin)) {
+        printf("\n");
+        msapi_runtimeError(vm, "An error occured while getting input");
+        return false;
+    }
+    
+    int len = strlen(str);
+    str[len - 1] = '\0';        // replace the newline character with null terminator 
+
+    ObjString* string = allocateString(vm, str, len - 1);
+    msapi_popn(vm, argCount + 1);
+    
+    if (returnCount > 0) {
+        msapi_push(vm, OBJ(string));
+    }
     return true;
 }
 

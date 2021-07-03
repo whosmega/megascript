@@ -174,6 +174,7 @@ ObjClass* allocateClass(VM* vm, ObjString* name) {
 ObjInstance* allocateInstance(VM* vm, ObjClass* klass) {
     ObjInstance* instance = (ObjInstance*)allocateObject(vm, sizeof(ObjInstance), OBJ_INSTANCE);
     instance->klass = klass;
+    initTable(&instance->table);
     copyTableAll(&klass->fields, &instance->table);
     return instance;
 }

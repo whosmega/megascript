@@ -215,6 +215,12 @@ static void patch(Parser* parser, unsigned int index) {
     int extra = -1;
 
     int currentIndex = currentChunk(parser)->elem_count - 1;
+
+    if (currentIndex - index + extra > UINT16_MAX) {
+        error(parser, "Block too big, cannot jump over more than 65536 instructions");
+        return;
+    }
+
     writeLongByteAt(currentChunk(parser), currentIndex - index + extra, index, parser->previous.line); 
 }
 
@@ -233,7 +239,13 @@ static void emitJumpBack(Parser* parser, unsigned int index) {
     int currentIndex = currentChunk(parser)->elem_count - 1;
     uint16_t offset = currentIndex - index;
     emitByte(parser, OP_JMP_BACK);
-    // + 3 is the extra offset required by OP_JMP_BACK 
+    // + 3 is the extra offset required by OP_JMP_BACK
+    
+    if (offset + 3 > UINT16_MAX) {
+        error(parser, "Block too big, cannot jump over more than 65536 instructions");
+        return;
+    }
+
     writeLongByte(currentChunk(parser), offset + 3, parser->previous.line);
 }
 
@@ -1283,8 +1295,11 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     endScope(parser);
 
     if (!elseIfFound && !elseFound) {
-        /* patch the unpatched OP_JMP_FALSE */
+        /* patch the unpatched OP_JMP_FALSE of the if */
         patch(parser, ifIndex);
+    } else if (elseIfFound && !elseFound) {
+        /* patch the unpatched OP_JMP_FALSE of the last elseif */ 
+        patch(parser, latestElseIfIndex);
     }
 
 
