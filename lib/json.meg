@@ -397,14 +397,14 @@ class Stringify:
     end
 end
 
-func parse(string):
+global func parse(string):
     var tokens = Lexer(string).scan()
     if !tokens: return false end 
 
     return Parser(tokens).parse()
 end
 
-func stringify(object):
+global func stringify(object):
     var string = Stringify(object).stringify()
     if !string: return false end 
     return string 

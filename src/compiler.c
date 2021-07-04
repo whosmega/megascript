@@ -54,6 +54,8 @@ static void beginScope(Parser* parser);
 static int endScope(Parser* parser);
 static void parseClosureFunction(Scanner* scanner, Parser* parser, Token identifier, FunctionType type);
 static void parseSupercall(Scanner* scanner, Parser* parser, bool shouldReturn);
+static void parseClassStatement(Scanner* scanner, Parser* parser);
+static void parseClass(Scanner* scanner, Parser* parser, Token identifier);
 
 Token token_super = {TOKEN_IDENTIFIER, "super", 5, 0};
 Token token_self = {TOKEN_IDENTIFIER, "self", 4, 0};
@@ -885,9 +887,16 @@ static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
         case TOKEN_IDENTIFIER: 
             parseGlobalVarDeclaration(scanner, parser);
             break;
-        case TOKEN_CLASS:
+        case TOKEN_CLASS: {
+            advance(scanner, parser);
+            consume(scanner, parser, TOKEN_IDENTIFIER, 
+                    "Expected identifier in global class declaration");
+            Token identifier = parser->previous;
+            parseClass(scanner, parser, identifier);
+            parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL);
             break;
-        case TOKEN_FUNC:
+        }
+        case TOKEN_FUNC: {
             advance(scanner, parser);
             consume(scanner, parser, TOKEN_IDENTIFIER, 
                     "Expected identifier in global function declaration");
@@ -896,6 +905,7 @@ static void parseGlobalDeclaration(Scanner* scanner, Parser* parser) {
             parseClosureFunction(scanner, parser, identifier, TYPE_NORMAL);
             parseIdentifier(parser, identifier, OP_DEFINE_GLOBAL, OP_DEFINE_LONG_GLOBAL);
             break;
+        }
         default:
             errorAtCurrent(parser, "Unknown token at global declaration");
             return;
@@ -1159,15 +1169,11 @@ static void parseMethodDeclaration(Scanner* scanner, Parser* parser, bool inheri
     emitByte(parser, inherits ? 1 : 0);
 }
 
-static void parseClassStatement(Scanner* scanner, Parser* parser) {
-    advance(scanner, parser);
-    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in class declaration");
-    Token identifier = parser->previous;
+static void parseClass(Scanner* scanner, Parser* parser, Token identifier) {
     Token superId;
     bool inherits = false;
     
     parseIdentifier(parser, identifier, OP_CLASS, OP_CLASS_LONG);
-    addLocal(parser, identifier);
     
     if (match(scanner, parser, TOKEN_INHERITS)) {
         consume(scanner, parser, TOKEN_IDENTIFIER, "Expected an identifier for superclass");
@@ -1204,6 +1210,15 @@ static void parseClassStatement(Scanner* scanner, Parser* parser) {
     }
 
     consume(scanner, parser, TOKEN_END, "Expected 'end' in class declaration");
+}
+
+static void parseClassStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    consume(scanner, parser, TOKEN_IDENTIFIER, "Expected Identifier in class declaration");
+    Token identifier = parser->previous;
+    addLocal(parser, identifier);
+
+    parseClass(scanner, parser, identifier);
 }
 
 static void parseReturnStatement(Scanner* scanner, Parser* parser) {
