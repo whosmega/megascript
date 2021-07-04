@@ -28,7 +28,8 @@ make
 ```
 After this process is complete, a binary executable `mega` should appear in the `megascript` directory (`mega.exe` on Windows)<br>
 <h4>Optional Cleanup</h4>
-The build object files are no longer needed and can be cleared up using 
+The build object files are no longer needed and can be cleared up using<br>
+
 ```
 make clean
 ```
