@@ -1,18 +1,78 @@
+CC = gcc 
+CFLAGS = -O2
+CLIBS = -lm
+
 ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
-    exe := mega.exe
+EXE := mega.exe
+RM := del
+MV := move
 else
-    exe := mega
+EXE := mega
+RM := rm
+MV := mv
 endif
 
-all:
-	gcc -O2 -c src/compiler.c src/table.c src/main.c src/memory.c src/scanner.c src/vm.c src/value.c src/object.c src/chunk.c src/debug.c src/globals.c src/gcollect.c
-	gcc -lm -O2 compiler.o main.o memory.o table.o scanner.o vm.o value.o object.o chunk.o debug.o globals.o gcollect.o -o $(exe)
+BIN =  chunk.o debug.o globals.o memory.o \
+	   scanner.o value.o compiler.o gcollect.o \
+	   main.o object.o table.o vm.o 
 
+$(EXE) : $(BIN)
+	$(CC) $(CLIBS) $(CFLAGS) $(BIN) -o $(EXE)
+	$(MV) *.o bin/
+
+chunk.o : includes/chunk.h includes/memory.h includes/value.h \
+		  src/chunk.c
+	$(CC) $(CFLAGS) -c src/chunk.c
+
+debug.o : includes/debug.h includes/value.h includes/object.h \
+		  src/debug.c 
+	$(CC) $(CFLAGS) -c src/debug.c 
+
+globals.o : includes/globals.h includes/object.h includes/value.h \
+			src/globals.c 
+	$(CC) $(CFLAGS) -c src/globals.c 
+
+memory.o : includes/memory.h includes/gcollect.h includes/debug.h \
+		   src/memory.c 
+	$(CC) $(CFLAGS) -c src/memory.c 
+
+scanner.o : includes/scanner.h includes/common.h \
+			src/scanner.c 
+	$(CC) $(CFLAGS) -c src/scanner.c 
+
+value.o : includes/value.h includes/memory.h includes/object.h \
+		  src/value.c
+	$(CC) $(CFLAGS) -c src/value.c 
+
+compiler.o : includes/compiler.h includes/chunk.h includes/scanner.h \
+			 includes/vm.h includes/debug.h includes/value.h includes/object.h \
+			 includes/memory.h \
+			 src/compiler.c 
+	$(CC) $(CFLAGS) -c src/compiler.c 
+
+gcollect.o : includes/gcollect.h includes/debug.h includes/memory.h \
+			 src/gcollect.c 
+	$(CC) $(CFLAGS) -c src/gcollect.c 
+
+main.o : includes/common.h includes/chunk.h includes/debug.h includes/vm.h \
+		 includes/compiler.h includes/table.h includes/object.h \
+		 src/main.c 
+	$(CC) $(CFLAGS) -c src/main.c 
+
+object.o : includes/object.h includes/memory.h includes/common.h includes/value.h \
+		   includes/vm.h includes/table.h includes/debug.h  \
+		   src/object.c 
+	$(CC) $(CFLAGS) -c src/object.c 
+
+table.o : includes/table.h includes/memory.h includes/object.h includes/value.h \
+		  src/table.c 
+	$(CC) $(CFLAGS) -c src/table.c 
+
+vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
+	   includes/object.h includes/value.h includes/table.h includes/globals.h \
+	   includes/memory.h \
+	   src/vm.c 
+	$(CC) $(CFLAGS) -c src/vm.c 
 
 clean:
-	rm *.o
-
-clearbin:
-	rm $(exe)
-
-
+	$(RM) bin/*.o 
