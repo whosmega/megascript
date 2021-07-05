@@ -49,6 +49,21 @@ Hello
 World
 ```
 
+<h3>String Bound Methods</h3>
+Following are the methods bound to every string object 
+
+1. `string.capture(start, end)` : Captures characters from a given string, and returns them in a new string.<br>
+Example:
+```
+"foobar".capture(0, 2)      // = "foo"
+```
+
+2. `string.getAscii()` : Returns the ascii code of the characters in the string.<br>
+If the string is only a single character, direct number is returned, otherwise the ascii code of every character is filled into an array in order and returned.
+Example:
+```
+"a".getAscii()        // = 97 
+```
 <h4> Functions, Classes, Arrays and Tables will be discussed later on, but each have a corresponding datatype of their own </h4>
 
 [next](/docs/operators.md) | [index](/docs/documentation.md)
