@@ -16,6 +16,13 @@ var second = array[1]       // `second` gets set to "Orange"
 ```
 Index `0` represents the first element, `1` second, and so on.<br>
 Arrays are normal values and can be passed around, as arguments and variables. 
+Values in arrays can be modified using their index<br>
+```
+var array = ["abc"]
+array[0] = "xyz"
+
+var value = array[0]      // = "xyz"
+```
 <h4>Inserting into arrays</h4>
 
 To insert new elements to the end of the array, simply use the built-in method `insert()`
