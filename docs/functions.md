@@ -70,4 +70,4 @@ The arguments then are added to an array and that array is set to the name given
 which get proceeded by a variadic parameter. There cannot be more than 1 variadic parameter, and it always has to be the last parameter declared.<br>
 More about arrays later.
 
-[previous](/docs/variables.md) | [next](/docs/) | [index](/docs/documentation.md)
+[previous](/docs/variables.md) | [next](/docs/arrays.md) | [index](/docs/documentation.md)
