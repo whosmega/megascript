@@ -23,15 +23,7 @@ array[0] = "xyz"
 
 var value = array[0]      // = "xyz"
 ```
-<h4>Inserting into arrays</h4>
 
-To insert new elements to the end of the array, simply use the built-in method `insert()`
-
-```
-var array = []
-array.insert(10, 20, "a")
-```
-`insert()` is variadic and inserts elements given to it in order.
 <h4>Array ranges</h4>
 
 Array ranging is a feature which makes it easier to fill arrays with a predictable sequence of numbers<br>
@@ -43,6 +35,17 @@ An increment can also be provided, which skips the numbers accordingly, by defau
 ```
 var array1 = [5..0..-1]       // = [5, 4, 3, 2, 1, 0]
 var array2 = [0..10..2]       // = [0, 2, 4, 6, 8, 10]
+```
+
+<h2>Bound Methods</h2>
+
+Following are the methods bound to every array object.
+
+1. `array.insert(...)` : This method inserts all the arguments passed to it as elements in order.
+<br>Example:
+```
+var array = []
+array.insert(10, 20, "a")
 ```
 
 [previous](/docs/functions.md) | [next](/docs/tables.md) | [index](/docs/documentation.md)
