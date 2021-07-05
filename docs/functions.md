@@ -81,7 +81,7 @@ func test():
     return variable
   end
   
-  return test
+  return test2
 end
 
 var result = test()()       // this is still set to "abc"
