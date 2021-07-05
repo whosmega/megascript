@@ -1,0 +1,19 @@
+<h1>Tables</h1>
+
+Tables in megascript are normal key-value pair hash tables.<br>
+Given a string key, any value can be accessed from the table.<br>
+This is a useful structure for storing data, when data is associated with a string. 
+<br>
+Tables can be created using the `{}` brackets, with inital values being direct key value pairs separated by commas<br>
+```
+var table = {"id" = 34, "username" = "mega"}
+```
+Accessing a key's value and setting it is similar to indexing arrays<br>
+```
+var table = {"name" = ""}
+
+table["name"] = "mega"
+var name = table["name"]        // set to "mega"    
+```
+
+[previous](/docs/arrays.md) | [next](/docs/) | [index](/docs/documentation.md)
