@@ -22,4 +22,4 @@ All table objects have the following methods bound to them:<br>
 1. `table.keys()`:
     This method returns all the keys of the table in a single array
 
-[previous](/docs/arrays.md) | [next](/docs/) | [index](/docs/documentation.md)
+[previous](/docs/arrays.md) | [next](/docs/classes.md) | [index](/docs/documentation.md)
