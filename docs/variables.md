@@ -69,3 +69,5 @@ var test = 65
 test += 10
 ```
 Are the exact same thing 
+
+[previous](/docs/operators.md) | [next](/docs/) | [index](/docs/documentation)
