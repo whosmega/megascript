@@ -35,4 +35,5 @@ make clean
 ```
 
 <h2>Features and Syntax</h2>
+
 Refer to documentation [here](/docs/documentation.md)
