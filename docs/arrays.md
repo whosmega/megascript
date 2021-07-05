@@ -38,4 +38,4 @@ var array1 = [5..0..-1]       // = [5, 4, 3, 2, 1, 0]
 var array2 = [0..10..2]       // = [0, 2, 4, 6, 8, 10]
 ```
 
-[previous](/docs/functions.md) | [next][/docs/tables.md] | [index](/docs/documentation.md)
+[previous](/docs/functions.md) | [next](/docs/tables.md) | [index](/docs/documentation.md)
