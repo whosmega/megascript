@@ -49,4 +49,6 @@ Hello
 World
 ```
 
-<h4> Functions, Classes, Arrays and Tables will be discussed later on, but each have a corresponding datatype of their own </h2>
+<h4> Functions, Classes, Arrays and Tables will be discussed later on, but each have a corresponding datatype of their own </h4>
+
+[next](/docs/operators.md)
