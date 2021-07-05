@@ -17,7 +17,7 @@ var name = table["name"]        // set to "mega"
 ```
 
 <h2>Bound methods</h2>
-All table objects have the following methods bound to them:<br>
+All table objects have the following methods bound to them:
 1. `table.keys()`:
     This method returns all the keys of the table in a single array
 
