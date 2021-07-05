@@ -113,4 +113,4 @@ The `or` operator will also skip evaluating the right side if the first value it
 <b>The assignment operators are used to give variables, arrays, tables and fields their values, they
 will be discussed in detail later</b>
 
-[previous](/docs/datatypes.md) | [next](/docs/variables.md)
+[previous](/docs/datatypes.md) | [next](/docs/variables.md) | [index](/docs/documentation.md)
