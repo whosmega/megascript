@@ -70,4 +70,4 @@ test += 10
 ```
 Are the exact same thing 
 
-[previous](/docs/operators.md) | [next](/docs/) | [index](/docs/documentation)
+[previous](/docs/operators.md) | [next](/docs/) | [index](/docs/documentation.md)
