@@ -122,3 +122,5 @@ end
 
 A(10, 20, 30)
 ```
+
+[previous](/docs/tables.md) | [next](/docs/keywords.md) | [index](/docs/documentation.md)
