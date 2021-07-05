@@ -21,6 +21,11 @@ Operators get divided into the following:
 1. `and`
 2. `or`
 
+<h3>Comparison Operators</h3>
+
+1. `==`         (equality check)
+2. `!=`         (unequality check)
+
 <h3>Assignment Operators</h3>
 
 1. `=` (Assigning values to variables / arrays / fields)
@@ -107,6 +112,14 @@ In case a falsy value needs to be yielded, it yields the <i>last falsy value it 
 `nil or false`  -> `false`  (falsy result)<br>
 
 The `or` operator will also skip evaluating the right side if the first value it finds it truthy.
+
+<h2>Comparison Operators</h2>
+
+1. `==`
+
+This operator does an equality check for quantites
+
+`5 == 5`
 
 <h2>Assignment Operators</h2>
 
