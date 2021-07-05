@@ -70,4 +70,21 @@ The arguments then are added to an array and that array is set to the name given
 which get proceeded by a variadic parameter. There cannot be more than 1 variadic parameter, and it always has to be the last parameter declared.<br>
 More about arrays later.
 
+<h4>Closures</h4>
+
+Megascript also fully supports the closure mechanism, local variables are not deleted, if they are getting used outside of the function body.<br>
+They however get deleted only when its safe to do so.
+```
+func test():
+  var variable = "abc"
+  func test2():
+    return variable
+  end
+  
+  return test
+end
+
+var result = test()()       // this is still set to "abc"
+```
+
 [previous](/docs/variables.md) | [next](/docs/arrays.md) | [index](/docs/documentation.md)
