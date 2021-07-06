@@ -70,6 +70,13 @@ The arguments then are added to an array and that array is set to the name given
 which get proceeded by a variadic parameter. There cannot be more than 1 variadic parameter, and it always has to be the last parameter declared.<br>
 More about arrays later.
 
+<h4>Anonymous Functions</h4>
+
+Megascript supports the concept of anonymous functions, which means functions can be defined inside expressions directly and passed.
+```
+print((func(a, b): return a + b end)(10, 20))
+```
+
 <h4>Closures</h4>
 
 Megascript also fully supports the closure mechanism, local variables are not deleted, if they are getting used outside of the function body.<br>
