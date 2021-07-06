@@ -16,6 +16,6 @@ This file includes the complete documentation index for megascript
 10. [Looping and breaking](/docs/looping.md)
 11. [Importing other files](/docs/importing.md)
 12. [Built-in globals](/docs/globals.md)
-13. [Libraries](/docs/libraries.md)
+13. [Libraries](/docs/library.md)
 
 <hr>
