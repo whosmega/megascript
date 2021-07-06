@@ -44,9 +44,9 @@ for i in 0, 10:
 end 
 ```
 
-<h3>Table iterating for loops</h3>
+<h3>Array iterating for loops</h3>
 
-Tables natively support iteration, the current index and value can be directly accessed using 2 user-named temporary variables<br>
+Arrays natively support iteration, the current index and value can be directly accessed using 2 user-named temporary variables<br>
 In the following example, the temporary variables are `i` and `v` and stand for index and value respectively. 
 ```
 for i, v in ["Apple", "Orange", "Mango"]:
