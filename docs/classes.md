@@ -123,4 +123,11 @@ end
 A(10, 20, 30)
 ```
 
+Classes can also be declared global using the `global` keyword
+```
+global class Car:
+  fuel = 100
+end
+```
+
 [previous](/docs/tables.md) | [next](/docs/keywords.md) | [index](/docs/documentation.md)
