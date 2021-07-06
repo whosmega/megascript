@@ -272,12 +272,13 @@ static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argC
         } else {
             popn(vm, extra);
         }
+        return true;
     } else if (argCount < expectedArgCount) {
         uint8_t padding = expectedArgCount - argCount;
         pushn(vm, NIL(), padding);
     }
 
-    // if it gets till here, we are in an argArity <= expectedArgArity for sure 
+    // if it gets till here, we are in an argCount <= expectedArgCount for sure 
     if (function->variadic) {
         push(vm, OBJ(allocateArray(vm)));
     }
