@@ -35,4 +35,5 @@ make clean
 ```
 
 <h2>Features and Syntax</h2>
-Documentation is coming soon
+
+Refer to documentation [here](/docs/documentation.md)
