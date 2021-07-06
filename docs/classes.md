@@ -34,7 +34,7 @@ Class methods can normally accept input when calling through normal parameter-ar
 
 <h4>Inheritance</h4>
 
-Inheritance can be done using the `inherit` keyword. 
+Inheritance can be done using the `inherits` keyword. 
 ```
 class A:
   func method():
