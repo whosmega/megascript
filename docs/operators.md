@@ -25,6 +25,10 @@ Operators get divided into the following:
 
 1. `==`         (equality check)
 2. `!=`         (unequality check)
+3. `>`          (greater than)
+4. `<`          (less than)
+5. `>=`         (greater than or equal to)
+6. `<=`         (less than or equal to)
 
 <h3>Assignment Operators</h3>
 
@@ -117,9 +121,41 @@ The `or` operator will also skip evaluating the right side if the first value it
 
 1. `==`
 
-This operator does an equality check for quantites
+This operator does an equality check for values, and yields true or false.
+```
+5 == 4                  -> false
+"abc" == "abc"          -> true
+```
 
-`5 == 5`
+2. `!=`
+This operator does an unequality check for values. It yields `true` if the values are <i>not</i> equal.
+```
+"abc" != "def"          -> true
+5 != 5                  -> false
+```
+
+<b>The following operators only work for numbers</b>
+3. `>`
+The greater than operator, checks if the value on the right is greater than the value on the right.
+```
+5 > 3                   -> true
+0 > 2                   -> false
+```
+
+4. `<`
+The less than operator, checks if the value on the right is less than the value on the right.
+```
+4 < 2                   -> false 
+4 < 10                  -> true
+```
+
+5. `>=`
+The greater than <i>or equal to</i> operator.<br>
+`a >= b` is equal to `a > b or a == b`
+
+6. `<=`
+The less than <i>or equal to</i> operator.<br>
+`a <= b` is equal to `a < b or a == b`
 
 <h2>Assignment Operators</h2>
 
