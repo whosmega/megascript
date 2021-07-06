@@ -34,4 +34,4 @@ from "test" import "add"
 print(add(1, 2))
 ```
 
-[previous](/docs/looping.md) | [next](/docs/builtin.md) | [index](/docs/documentation.md)
+[previous](/docs/looping.md) | [next](/docs/globals.md) | [index](/docs/documentation.md)
