@@ -1246,6 +1246,17 @@ static void parseReturnStatement(Scanner* scanner, Parser* parser) {
     match(scanner, parser, TOKEN_SEMICOLON);
 }
 
+static void parseImportStatement(Scanner* scanner, Parser* parser) {
+    advance(scanner, parser);
+    consume(scanner, parser, TOKEN_STRING, "Expected a string import path");
+    Token string = parser->previous;
+
+    int constant = makeConstant(currentChunk(parser),  
+                OBJ(allocateString(parser->vm, string.start + 1, string.length - 2)));
+
+    emitLongOperand(parser, (uint16_t)constant, OP_IMPORT, OP_IMPORT_LONG);
+}
+
 static void parseIfStatement(Scanner* scanner, Parser* parser) {
     UintArray patchIndexes;
     initUintArray(&patchIndexes);
@@ -1574,6 +1585,7 @@ static void synchronize(Scanner* scanner, Parser* parser) {
 static void statement(Scanner* scanner, Parser* parser) {
     switch (parser->current.type) {
         case TOKEN_GLOBAL: parseGlobalDeclaration(scanner, parser); break;
+        case TOKEN_IMPORT: parseImportStatement(scanner, parser); break;
         case TOKEN_VAR: parseLocalDeclaration(scanner, parser); break;
         case TOKEN_FUNC: parseFunctionDeclaration(scanner, parser); break;
         case TOKEN_IF: parseIfStatement(scanner, parser); break;

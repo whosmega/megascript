@@ -30,9 +30,9 @@ typedef enum {
     TOKEN_FALSE, TOKEN_TRUE, TOKEN_IF, TOKEN_ELSE, TOKEN_ELSEIF,
     TOKEN_CLASS, TOKEN_INHERITS, TOKEN_FUNC, TOKEN_END, 
     TOKEN_RETURN, TOKEN_GLOBAL, TOKEN_VAR, TOKEN_NIL, TOKEN_BREAK, 
-    TOKEN_IN, TOKEN_SELF, TOKEN_SUPER,
+    TOKEN_IN, TOKEN_SELF, TOKEN_SUPER, TOKEN_IMPORT, TOKEN_FROM,
 
-    TOKEN_RANGE, TOKEN_VAR_ARGS,                                                     // [{1..4}, abc(args...)]
+    TOKEN_RANGE, TOKEN_VAR_ARGS,                                                  // [{1..4}, abc(args...)]
     TOKEN_EOF, TOKEN_ERROR
 } TokenType;
 

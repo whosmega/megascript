@@ -7,6 +7,7 @@
 #include "../includes/table.h"
 #include "../includes/globals.h"
 #include "../includes/memory.h"
+#include "../includes/compiler.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -14,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #define READ_BYTE(frameptr) (*frame->ip++)
 #define READ_LONG_BYTE(frameptr) (READ_BYTE(frameptr) | READ_BYTE(frameptr) << 8)
@@ -339,6 +341,10 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
+static bool import(VM* vm, ObjString* string) {
+    return true;
+}
+
 static bool checkCustomIndexArray(VM* vm, ObjArray* array, Value index) {
     if (!CHECK_NUMBER(index)) {
         msapi_runtimeError(vm, "Expected a number for array index");
@@ -556,6 +562,11 @@ static InterpretResult run(VM* vm) {
             case OP_ZERO: push(vm, NATIVE_TO_NUMBER(0)); break; 
             case OP_MIN1: push(vm, NATIVE_TO_NUMBER(-1)); break;
             case OP_PLUS1: push(vm, NATIVE_TO_NUMBER(1)); break;
+            case OP_IMPORT: {
+                ObjString* string = AS_STRING(READ_CONSTANT(frame));
+                if (!import(vm, string)) return INTERPRET_RUNTIME_ERROR;
+                break;
+            }
             case OP_CLASS: {
                 Value string = READ_CONSTANT(frame);
                 ObjClass* klass = allocateClass(vm, AS_STRING(string));
@@ -1435,10 +1446,10 @@ static InterpretResult run(VM* vm) {
 
                 Value field;
                 if (getTable(&super->fields, string, &field)) {
-                    push(vm, OBJ(allocateMethod(vm, self, AS_CLOSURE(field))));
+                    push(vm, field);
                     break;
                 } else if (getTable(&super->methods, string, &field)) {
-                    push(vm, field);
+                    push(vm, OBJ(allocateMethod(vm, self, AS_CLOSURE(field))));
                     break;
                 }
 

@@ -70,7 +70,7 @@ table.o : includes/table.h includes/memory.h includes/object.h includes/value.h 
 
 vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 	   includes/object.h includes/value.h includes/table.h includes/globals.h \
-	   includes/memory.h \
+	   includes/memory.h includes/compiler.h\
 	   src/vm.c 
 	$(CC) $(CFLAGS) -c src/vm.c 
 

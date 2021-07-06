@@ -59,14 +59,9 @@ typedef enum {
     OP_JMP,
     OP_JMP_FALSE,
     OP_JMP_OR,
-    OP_JMP_OR_LONG,
     OP_JMP_LONG,
-    OP_JMP_FALSE_LONG,
     OP_JMP_BACK,
-    OP_JMP_BACK_LONG,
     OP_JMP_AND,
-    OP_JMP_AND_LONG,
-
     
     OP_ZERO,
     OP_MIN1,
@@ -105,10 +100,13 @@ typedef enum {
     OP_SET_CLASS_FIELD,                         /* Sets a class field */ 
     OP_SET_CLASS_FIELD_LONG,                    /* Sets a class field */
     OP_GET_FIELD,
-    OP_INVOKE,
-    OP_INHERIT,
-    OP_GET_SUPER,
-    OP_SUPERCALL,
+    OP_INVOKE,                                  /* Optimised method calls by directly calling */
+    OP_INHERIT,                                 /* Used for inheriting classes */ 
+    OP_GET_SUPER,                               /* Get field / method from superclass */ 
+    OP_SUPERCALL,                               /* Do a supercall directly without method wrapping */
+    OP_IMPORT,                                  /* import "x" */
+    OP_FROM_IMPORT,                             /* from "x" import "y" */
+    OP_IMPORT_LONG,                              
     OP_RETEOF                                   /* Return from main function + EOF */ 
 } OPCODE;                                       /* Enum which defines opcodes */
 
