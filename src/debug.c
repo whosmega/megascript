@@ -138,12 +138,12 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_RETFILE:
+            return simpleInstruction("RETFILE", offset);
         case OP_IMPORT:
-            return constantInstruction("OP_IMPORT", chunk, offset);
+            return constantInstruction("IMPORT", chunk, offset);
         case OP_IMPORT_LONG:
-            return longConstantInstruction("OP_IMPORT_LONG", chunk, offset);
-        case OP_FROM_IMPORT:
-            return doubleLongConstantInstruction("OP_FROM_IMPORT", chunk, offset);
+            return longConstantInstruction("IMPORT_LONG", chunk, offset);
         case OP_TABLE:
             return simpleInstruction("TABLE (emit)", offset);
         case OP_TABLE_INS:

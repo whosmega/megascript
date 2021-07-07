@@ -9,6 +9,7 @@
 #define UPVAL_MAX 256
 #define FRAME_MAX 256
 #define STACK_MAX LVAR_MAX * FRAME_MAX
+#define IMPORT_CYCLE_MAX 50
 
 typedef struct {
     ObjClosure* closure;
@@ -37,6 +38,10 @@ typedef struct {
     size_t bytesAllocated;
     size_t nextGC;
     bool running;
+
+    Table importCache;
+    Table importStack[IMPORT_CYCLE_MAX];         // stack for global array 
+    int importCount;
 } VM;
 
 

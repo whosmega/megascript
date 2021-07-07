@@ -1788,11 +1788,10 @@ void endCompiler(Compiler* compiler, Parser* parser, uint8_t ins) {
     parser->compiler = parser->compiler->enclosing;
 }
 
-InterpretResult compile(const char* source, VM* vm, ObjFunction* function) {
+InterpretResult compile(const char* source, VM* vm, ObjFunction* function, bool isMain) {
     Scanner scanner;
     Parser parser;
     Compiler compiler;
-
     // Init parser already sets the compiler for us
 
     initScanner(&scanner, source);
@@ -1808,7 +1807,7 @@ InterpretResult compile(const char* source, VM* vm, ObjFunction* function) {
     // endScope(&parser);           // RETEOF resets the stack automatically
     match(&scanner, &parser, TOKEN_EOF);
 
-    endCompiler(&compiler, &parser, OP_RETEOF);
+    endCompiler(&compiler, &parser, isMain ? OP_RETEOF : OP_RETFILE);
     #ifdef DEBUG_PRINT_BYTECODE
     
     if (!parser.hadError) {

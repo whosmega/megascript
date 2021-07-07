@@ -169,7 +169,6 @@ static Token scanIdentifier(Scanner* scanner) {
                     case 'o': type = checkKeyword(scanner, 2, 1, "r", TOKEN_FOR); break;
                     case 'a': type = checkKeyword(scanner, 2, 3, "lse", TOKEN_FALSE); break;
                     case 'u': type = checkKeyword(scanner, 2, 2, "nc", TOKEN_FUNC); break;
-                    case 'r': type = checkKeyword(scanner, 2, 2, "om", TOKEN_FROM); break;
                 }
             }
             break;

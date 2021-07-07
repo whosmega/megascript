@@ -28,6 +28,7 @@ void injectGlobals(VM* vm) {
     insertTable(&vm->globals, str_input, OBJ(native_input));
 }
 
+
 bool msglobal_print(VM* vm, int argCount, int returnCount) {
     
     for (int i = argCount - 1; i >= 0; i--) {

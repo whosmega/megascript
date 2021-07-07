@@ -57,7 +57,7 @@ void runFile(const char* fileName, FlagContainer flagContainer) {
     VM vm;
     initVM(&vm);
     ObjFunction* function = newFunction(&vm, "main", 0);
-    InterpretResult result1 = compile(source, &vm, function);
+    InterpretResult result1 = compile(source, &vm, function, true);
 
     if (result1 == INTERPRET_COMPILE_ERROR) {
         if (flagContainer.flags[FLAG_DISSEMBLY]) {
@@ -100,7 +100,7 @@ void repl() {
             exit(0);
         }
         ran = true;
-        InterpretResult result1 = compile(buffer, &vm, function);
+        InterpretResult result1 = compile(buffer, &vm, function, true);
         
         if (result1 == INTERPRET_OK) { 
             InterpretResult result2 = interpret(&vm, function);

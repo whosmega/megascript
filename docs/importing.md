@@ -27,11 +27,4 @@ print(test.add(10, 20, 30))
 ```
 Something to be noted is that only global variables/global functions/global classes are accessible. This also allows file wide encapsulation of certain functions.
 <br>
-Individual functions/variables/classes can also be imported, which are inserted into the global environment using the `from` keyword.
-```
-from "test" import "add"
-
-print(add(1, 2))
-```
-
 [previous](/docs/looping.md) | [next](/docs/globals.md) | [index](/docs/documentation.md)

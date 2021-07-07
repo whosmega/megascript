@@ -116,7 +116,14 @@ void markRoots(VM* vm) {
     markPtrTable(vm, &vm->arrayMethods);
     markPtrTable(vm, &vm->stringMethods);
     markPtrTable(vm, &vm->tableMethods);
-     /* Mark the running functions in the call stack */ 
+
+    markTable(vm, &vm->importCache); 
+    /* Mark global arrays in import stack */ 
+    for (int i = 0; i < vm->importCount; i++) {
+        markTable(vm, &vm->importStack[i]);
+    }
+
+    /* Mark the running functions in the call stack */ 
     for (int i = 0; i < vm->frameCount; i++) {
         CallFrame frame = vm->frames[i];
         markObject(vm, (Obj*)frame.closure);

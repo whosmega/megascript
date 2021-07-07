@@ -1,0 +1,3 @@
+import "main.meg"
+
+print("a")

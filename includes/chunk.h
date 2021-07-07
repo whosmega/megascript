@@ -105,8 +105,8 @@ typedef enum {
     OP_GET_SUPER,                               /* Get field / method from superclass */ 
     OP_SUPERCALL,                               /* Do a supercall directly without method wrapping */
     OP_IMPORT,                                  /* import "x" */
-    OP_FROM_IMPORT,                             /* from "x" import "y" */
-    OP_IMPORT_LONG,                              
+    OP_IMPORT_LONG,                             
+    OP_RETFILE,
     OP_RETEOF                                   /* Return from main function + EOF */ 
 } OPCODE;                                       /* Enum which defines opcodes */
 

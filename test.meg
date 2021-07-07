@@ -1,12 +1,3 @@
+global ok = 100
 
-  func add(args...):
-    var total = 0
-    for i, v in args:
-        print(secondTotal)
-      total += v
-    end
-    return total
-  end
-
-add(2, 3)
-
+print("Hello World")

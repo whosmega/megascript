@@ -16,6 +16,13 @@ table["name"] = "mega"
 var name = table["name"]        // set to "mega"    
 ```
 
+Tables can also be used with the dot syntax
+```
+var table = {}
+table.name = "mega"
+print(table.name)
+```
+
 <h2>Bound methods</h2>
 All table objects have the following methods bound to them:<br>
 

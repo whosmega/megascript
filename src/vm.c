@@ -90,7 +90,8 @@ void initVM(VM* vm) {
     initPtrTable(&vm->tableMethods);
     resetStack(vm);
     vm->running = false;
-
+    initTable(&vm->importCache);
+    vm->importCount = 0;
     
     injectArrayMethods(vm);
     injectStringMethods(vm);
@@ -102,9 +103,11 @@ void initVM(VM* vm) {
 void freeVM(VM* vm) {
     freeTable(&vm->strings);
     freeTable(&vm->globals);
+    freeTable(&vm->importCache);
     freePtrTable(&vm->arrayMethods);
     freePtrTable(&vm->stringMethods);
     freePtrTable(&vm->tableMethods);
+    freeTable(&vm->importCache);
     freeObjects(vm);
     FREE_ARRAY(Obj*, vm->greyStack, vm->greyCapacity);
 }
@@ -255,7 +258,7 @@ static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argC
     frame.slotPtr = peekptr(vm, argCount);
     vm->frames[vm->frameCount] = frame;
     vm->frameCount++;
-
+    
     uint8_t expectedArgCount = closure->function->arity;
 
     if (argCount > expectedArgCount) { 
@@ -342,7 +345,119 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
-static bool import(VM* vm, ObjString* string) {
+static FILE* openFile(VM* vm, char* path) {
+    if (access(path, F_OK) == -1) {
+        
+        // check lib 
+        char newPath[strlen(path) + 5];         // + lib/ + '\0' 
+        strcpy(newPath, "lib/");
+        strcat(newPath, path);
+        
+        if (access(newPath, F_OK) != -1) {
+            FILE* file = fopen(newPath, "r");
+            return file;
+        }
+
+        msapi_runtimeError(vm, "Cannot access file %s", path);
+        return NULL;
+    }
+
+    // we found it in the current dir 
+    FILE* file = fopen(path, "r");
+    return file;
+}
+
+static bool import(VM* vm, ObjString* importPath) {
+    char* extension = NULL;
+    char* name = &importPath->allocated[0];
+    int nameLength = 0;
+    bool stop = false;
+
+    for (int i = 0; i < importPath->length; i++) {
+
+        if (importPath->allocated[i] == '.') {
+            extension = &importPath->allocated[i + 1];
+            stop = true;
+        } else if (importPath->allocated[i] == '/' || importPath->allocated[i] == '\\') {
+            name = &importPath->allocated[i + 1];
+            nameLength = 0;
+            stop = false;
+        } else {
+            if (!stop) {
+                nameLength++;
+            }
+        }
+    }
+    
+    Value cache;
+    ObjString* fileName = allocateString(vm, name, nameLength);
+    if (getTable(&vm->importCache, fileName, &cache)) {
+        /* If this file has already been executed, we dont run it again */
+
+        insertTable(&vm->globals, fileName, cache);
+        return true;
+    }
+
+    if (!extension || strcmp(extension, "meg") == 0) {
+        // meg files
+        FILE* file;
+        if (!extension) {
+            char path[importPath->length + 5];              // .meg + '\0' = 5
+            strcpy(path, importPath->allocated);
+            strcat(path, ".meg");
+            
+            file = openFile(vm, path);
+            if (file == NULL) return false;
+        } else {
+            file = openFile(vm, importPath->allocated);
+            if (file == NULL) return false;
+        }
+        
+
+        // The file has been found, opened and is a verified .meg file
+        fseek(file, 0, SEEK_END);
+        long length = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        char* string = (char*)reallocate(vm, NULL, 0, length + 1);
+        fread(string, 1, length, file);
+        fclose(file);
+
+        // We have the contents of the file now 
+        ObjFunction* function = allocateFunction(vm, importPath, 0);
+        push(vm, OBJ(function));
+        vm->running = false;
+        if (compile(string, vm, function, false) == INTERPRET_COMPILE_ERROR) {
+            vm->running = true;
+            return false;
+        }
+        vm->running = true;
+
+        // preserve current global state
+        
+        if (vm->importCount >= IMPORT_CYCLE_MAX) {
+            msapi_runtimeError(vm, "Import stack overflow (possible circular import)");
+            return false;
+        }
+        
+        vm->importStack[vm->importCount] = vm->globals;
+        vm->importCount++;
+        initTable(&vm->globals);
+        injectGlobals(vm);
+
+        ObjClosure* closure = allocateClosure(vm, function);
+        pop(vm);
+        push(vm, OBJ(fileName));
+        push(vm, OBJ(closure));
+        
+        if (!callClosure(vm, closure, false, 0)) return false;
+    } else if (strcmp(extension, "so") == 0 || strcmp(extension, "dll") == 0) {
+        // so/dll 
+    } else {
+        msapi_runtimeError(vm, "Cannot open file : Unknown file type");
+        return false;
+    }
+
     return true;
 }
 
@@ -566,6 +681,31 @@ static InterpretResult run(VM* vm) {
             case OP_IMPORT: {
                 ObjString* string = AS_STRING(READ_CONSTANT(frame));
                 if (!import(vm, string)) return INTERPRET_RUNTIME_ERROR;
+                frame = &vm->frames[vm->frameCount - 1];
+                break;
+            }
+            case OP_IMPORT_LONG: {
+                ObjString* string = AS_STRING(READ_LONG_CONSTANT(frame));
+                if (!import(vm, string)) return INTERPRET_RUNTIME_ERROR;
+                frame = &vm->frames[vm->frameCount - 1];
+                break;
+            }
+            case OP_RETFILE: {
+                vm->stackTop = frame->slotPtr;
+                vm->frameCount--;
+                frame = &vm->frames[vm->frameCount - 1];
+                ObjString* fileName = AS_STRING(pop(vm));
+                Table oldGlobals = vm->globals;
+
+                // restore globals
+                vm->globals = vm->importStack[vm->importCount - 1];
+
+                ObjTable* table = allocateTable(vm);
+                table->table = oldGlobals;
+                    
+                insertTable(&vm->globals, fileName, OBJ(table));
+                insertTable(&vm->importCache, fileName, OBJ(table));
+                vm->importCount--;
                 break;
             }
             case OP_CLASS: {
@@ -609,15 +749,29 @@ static InterpretResult run(VM* vm) {
                 ObjString* fieldName = AS_STRING(peek(vm, 1));
                 Value setVal = peek(vm, 2);
                 
-                if (!CHECK_INSTANCE(setVal)) {
-                    msapi_runtimeError(vm, "Expected a class instance for assigning field");
+                if (!CHECK_OBJ(setVal)) {
+                    msapi_runtimeError(vm, "Attempt to set a non-indexable value");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                
-                ObjInstance* instance = AS_INSTANCE(setVal);
-                insertTable(&instance->table, fieldName, val);
-                popn(vm, 3);
-                break; 
+
+                switch (AS_OBJ(setVal)->type) {
+                    case OBJ_INSTANCE: {
+                        ObjInstance* instance = AS_INSTANCE(setVal);
+                        insertTable(&instance->table, fieldName, val);
+                        popn(vm, 3);
+                        break;
+                    }
+                    case OBJ_TABLE: {
+                        ObjTable* table = AS_TABLE(setVal);
+                        insertTable(&table->table, fieldName, val);
+                        popn(vm, 3);
+                        break;
+                    }
+                    default: 
+                        msapi_runtimeError(vm, "Attempt to set a non-indexable object");
+                        return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
             }
             case OP_GET_FIELD: {
                 ObjString* fieldName = AS_STRING(peek(vm, 0));
@@ -692,7 +846,14 @@ static InterpretResult run(VM* vm) {
                                         allocateNativeMethod(vm, fieldName,
                                             (Obj*)AS_OBJ(getVal), ptr)));
                         } else {
-                            push(vm, NIL());
+                            Value value;
+                            bool foundValue = getTable(&AS_TABLE(getVal)->table, fieldName, &value);
+
+                            if (foundValue) {
+                                push(vm, value);
+                            } else {
+                                push(vm, NIL());
+                            }
                         }
                         break;
                     
