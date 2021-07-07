@@ -447,8 +447,10 @@ static bool import(VM* vm, ObjString* importPath) {
 
         ObjClosure* closure = allocateClosure(vm, function);
         pop(vm);
+
+        /* The filename stays in the place of the function in the callframe */
         push(vm, OBJ(fileName));
-        push(vm, OBJ(closure));
+        // push(vm, OBJ(closure));
         
         if (!callClosure(vm, closure, false, 0)) return false;
     } else if (strcmp(extension, "so") == 0 || strcmp(extension, "dll") == 0) {
@@ -519,10 +521,10 @@ static ObjUpvalue* captureUpvalue(VM* vm, Value* value) {
 }
 
 static void closeUpvalues(VM* vm, Value* slot) {
-    
-    while (vm->UpvalueHead != NULL && vm->UpvalueHead->value >= slot) {
+
+     while (vm->UpvalueHead != NULL && vm->UpvalueHead->value >= slot) {
         ObjUpvalue* openUpvalue = vm->UpvalueHead;
-        openUpvalue->closed = *slot;
+        openUpvalue->closed = *openUpvalue->value;
         openUpvalue->value = &openUpvalue->closed;
         vm->UpvalueHead = openUpvalue->next;
     }
@@ -691,10 +693,14 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_RETFILE: {
+                /* We need to move all upvalues in this function to the heap */
+                closeUpvalues(vm, frame->slotPtr);
+
+                ObjString* fileName = AS_STRING(*frame->slotPtr);
+
                 vm->stackTop = frame->slotPtr;
                 vm->frameCount--;
                 frame = &vm->frames[vm->frameCount - 1];
-                ObjString* fileName = AS_STRING(pop(vm));
                 Table oldGlobals = vm->globals;
 
                 // restore globals
@@ -836,6 +842,15 @@ static InterpretResult run(VM* vm) {
                         break;
                     }
                     case OBJ_TABLE: {
+                        Value value;
+                        bool foundValue = getTable(&AS_TABLE(getVal)->table, fieldName, &value);
+
+                        if (foundValue) {
+                            popn(vm, 2);
+                            push(vm, value);
+                            break;
+                        }
+
                         NativeMethodPtr ptr = NULL;
                         bool found = getPtrTable(&vm->tableMethods, fieldName, (void*)&ptr);
 
@@ -846,14 +861,7 @@ static InterpretResult run(VM* vm) {
                                         allocateNativeMethod(vm, fieldName,
                                             (Obj*)AS_OBJ(getVal), ptr)));
                         } else {
-                            Value value;
-                            bool foundValue = getTable(&AS_TABLE(getVal)->table, fieldName, &value);
-
-                            if (foundValue) {
-                                push(vm, value);
-                            } else {
-                                push(vm, NIL());
-                            }
+                            push(vm, NIL());
                         }
                         break;
                     
@@ -915,7 +923,7 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_GET_UPVALUE: {
-                uint8_t index = READ_BYTE(frame); 
+                uint8_t index = READ_BYTE(frame);
                 push(vm, *frame->closure->upvalues[index]->value);
                 break;
             }
@@ -1574,6 +1582,17 @@ static InterpretResult run(VM* vm) {
                         break;
                     }
                     case OBJ_TABLE: {
+                        // search for key 
+                        Value value;
+                        bool foundKey = getTable(&AS_TABLE(callVal)->table, string, &value);
+
+                        if (foundKey) {
+                            vm->stackTop[-argCount - 1] = value;        // replace table with func
+                            if (!callValue(vm, value, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+
+                            break;
+                        }
+
                         bool result = invokeNativeMethod(vm, string,
                                 callVal.as.obj, argCount, shouldReturn, &vm->tableMethods);
 

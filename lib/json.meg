@@ -395,9 +395,10 @@ class Stringify:
             return ""
         end
     end
-end
+end 
 
 global func parse(string):
+    print(Lexer)
     var tokens = Lexer(string).scan()
     if !tokens: return false end 
 
@@ -408,4 +409,4 @@ global func stringify(object):
     var string = Stringify(object).stringify()
     if !string: return false end 
     return string 
-end 
+end
