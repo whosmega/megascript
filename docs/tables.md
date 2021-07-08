@@ -33,7 +33,8 @@ string key. The value returned by this function is the value returned by the unk
 <br>
 `table._nokeycall(table, key, args[])` : This key when set to a function, gets invoked when<br>
 a key is invoked directly even when the value itself is `nil`. This is similar to `_nokey` except 
-is passes the arguments given to the invoke in an array<br>
+it passes the arguments given to the invoke in an array. The return value of this function is 
+also set to the return value of the main invoke<br>
 
 <h2>Bound methods</h2>
 All table objects have the following methods bound to them:<br>
