@@ -183,6 +183,22 @@ func test_table():
     return true 
 end 
 
+func test_import():
+    import "json" 
+    if !json:
+        return false 
+    end 
+
+    if !json.parse:
+        return false 
+    end 
+
+    if !(type(json.parse("{}")) == "table"):
+        return false 
+    end 
+    return true 
+end 
+
 var tests = [
     test_or_and,
     test_lvars,
@@ -193,7 +209,8 @@ var tests = [
     test_class,
     test_class_inheritance,
     test_expressions,
-    test_table
+    test_table,
+    test_import
 ]
 
 for i, v in tests:

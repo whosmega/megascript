@@ -1,6 +1,6 @@
 CC = gcc 
 CFLAGS = -O2
-CLIBS = -lm
+CLIBS = -lm -ldl
 
 ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
 EXE := mega.exe

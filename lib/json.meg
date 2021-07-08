@@ -398,7 +398,6 @@ class Stringify:
 end 
 
 global func parse(string):
-    print(Lexer)
     var tokens = Lexer(string).scan()
     if !tokens: return false end 
 

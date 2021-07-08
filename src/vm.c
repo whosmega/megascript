@@ -15,7 +15,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
-#include <unistd.h>
+
+#ifdef _WIN32
+#include "win_unistd.h"                 /* File system checking */ 
+#include <libloaderapi.h>               /* Loading DLLs */ 
+#else
+#include <unistd.h>                     /* File system checking */ 
+#include <dlfcn.h>                      /* Loading DLLs */ 
+#endif
 
 #define READ_BYTE(frameptr) (*frame->ip++)
 #define READ_LONG_BYTE(frameptr) (READ_BYTE(frameptr) | READ_BYTE(frameptr) << 8)
@@ -455,6 +462,18 @@ static bool import(VM* vm, ObjString* importPath) {
         if (!callClosure(vm, closure, false, 0)) return false;
     } else if (strcmp(extension, "so") == 0 || strcmp(extension, "dll") == 0) {
         // so/dll 
+#ifdef _WIN32
+
+#else 
+        /* Linux */ 
+        void* handler = dlopen(importPath->allocated, RTLD_NOW);
+        if (handler == NULL) {
+            msapi_runtimeError(vm, "Error opening dynamic link library");
+            return false; 
+        }
+
+
+#endif 
     } else {
         msapi_runtimeError(vm, "Cannot open file : Unknown file type");
         return false;
@@ -852,17 +871,30 @@ static InterpretResult run(VM* vm) {
                         }
 
                         NativeMethodPtr ptr = NULL;
-                        bool found = getPtrTable(&vm->tableMethods, fieldName, (void*)&ptr);
-
-                        popn(vm, 2);
+                        bool found = getPtrTable(&vm->tableMethods, fieldName, (void*)&ptr); 
 
                         if (found) {
-                            push(vm, OBJ(
-                                        allocateNativeMethod(vm, fieldName,
-                                            (Obj*)AS_OBJ(getVal), ptr)));
-                        } else {
-                            push(vm, NIL());
+                            ObjNativeMethod* method = allocateNativeMethod(vm, fieldName,
+                                            (Obj*)AS_OBJ(getVal), ptr);
+                            popn(vm, 2);
+                            push(vm, OBJ(method));
+                            break;
                         }
+
+                        bool found_nokey = getTable(&AS_TABLE(getVal)->table, 
+                                allocateString(vm, "_nokey", 6), &value);
+                        
+                        popn(vm, 2);
+                        if (found_nokey) {
+                            push(vm, value);
+                            push(vm, getVal);
+                            push(vm, OBJ(fieldName));
+                            if (!callValue(vm, value, true, 2)) return INTERPRET_RUNTIME_ERROR;
+                            frame = &vm->frames[vm->frameCount - 1];
+                            break;
+                        }
+                        push(vm, NIL());
+                        
                         break;
                     
                     }
@@ -1438,11 +1470,26 @@ static InterpretResult run(VM* vm) {
                             msapi_runtimeError(vm, "Attempt to index table with non-string index");
                             return INTERPRET_RUNTIME_ERROR;
                         }
-
+                        
                         Value tableVal = NIL();
-                        getTable(&table->table, AS_STRING(index), &tableVal);
-
-                        push(vm, tableVal);
+                        bool found = getTable(&table->table, AS_STRING(index), &tableVal);
+                        
+                        if (found) {
+                            push(vm, tableVal);
+                            break;
+                        }
+                        
+                        bool found_nokey = getTable(&table->table, 
+                                allocateString(vm, "_nokey", 6), &tableVal);
+                        if (found_nokey) {
+                            push(vm, tableVal);
+                            push(vm, valArray);           /* 'self' */ 
+                            push(vm, index);              /* key */
+                            if (!callValue(vm, tableVal, true, 2)) return INTERPRET_RUNTIME_ERROR;
+                            frame = &vm->frames[vm->frameCount - 1];
+                        } else {
+                            push(vm, NIL());
+                        }
                         break;
                     }
                     default:
@@ -1583,20 +1630,47 @@ static InterpretResult run(VM* vm) {
                     }
                     case OBJ_TABLE: {
                         // search for key 
-                        Value value;
+                        Value value = NIL();
                         bool foundKey = getTable(&AS_TABLE(callVal)->table, string, &value);
 
                         if (foundKey) {
                             vm->stackTop[-argCount - 1] = value;        // replace table with func
                             if (!callValue(vm, value, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
-
+                            frame = &vm->frames[vm->frameCount - 1];
                             break;
                         }
+                        NativeMethodPtr* ptr = NULL;
+                        bool foundBoundMethod = getPtrTable(&vm->tableMethods, string, (void*)&ptr);
 
-                        bool result = invokeNativeMethod(vm, string,
-                                callVal.as.obj, argCount, shouldReturn, &vm->tableMethods);
+                        if (!foundBoundMethod) {                        
+                            bool found_nokeycall = getTable(&AS_TABLE(callVal)->table, 
+                                    allocateString(vm, "_nokeycall", 10), &value);
 
-                        if (!result) return INTERPRET_RUNTIME_ERROR;
+                            if (found_nokeycall) {
+                                ObjArray* array = allocateArray(vm); 
+
+                                for (int i = -argCount; i < 0; i++) {
+                                    writeValueArray(&array->array, vm->stackTop[i]);
+                                }
+
+                                popn(vm, argCount + 1);
+                                push(vm, value); 
+                                push(vm, callVal);
+                                push(vm, OBJ(string));
+                                push(vm, OBJ(array));
+
+                                if (!callValue(vm, value, shouldReturn, 3)) return INTERPRET_RUNTIME_ERROR;
+                                frame = &vm->frames[vm->frameCount - 1];
+                                break;
+                            }
+                            
+                            msapi_runtimeError(vm, "Attempt to invoke a nil value");
+                            return INTERPRET_RUNTIME_ERROR;
+                        }
+
+                        bool result = (*ptr)(vm, AS_OBJ(callVal), argCount, shouldReturn);
+                        if (!result) return INTERPRET_RUNTIME_ERROR; 
+                        
                         break;
                     }
                     default: 
