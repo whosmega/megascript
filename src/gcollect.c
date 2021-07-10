@@ -116,6 +116,7 @@ void markRoots(VM* vm) {
     markPtrTable(vm, &vm->arrayMethods);
     markPtrTable(vm, &vm->stringMethods);
     markPtrTable(vm, &vm->tableMethods);
+    markPtrTable(vm, &vm->dllMethods);
 
     markTable(vm, &vm->importCache); 
     /* Mark global arrays in import stack */ 
@@ -200,6 +201,10 @@ void blackenObject(VM* vm, Obj* obj) {
             ObjNativeMethod* nativeMethod = (ObjNativeMethod*)obj;
             markObject(vm, nativeMethod->self);
             markObject(vm, &nativeMethod->name->obj);
+            break;
+        }
+        case OBJ_DLL_CONTAINER: {
+            markObject(vm, &((ObjDllContainer*)obj)->fileName->obj);
             break;
         }
         default: return;

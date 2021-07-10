@@ -5,8 +5,8 @@
 #include "../includes/value.h"
 #include "../includes/vm.h"
 
-typedef bool (*NativeFuncPtr)(VM*, int, int);
-typedef bool (*NativeMethodPtr)(VM* vm, Obj* self, int argCount, bool shouldReturn);
+typedef bool (*NativeFuncPtr)(VM*, int, bool);
+typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 
 #define CHECK_STRING(val) \
     (isObjType(val, OBJ_STRING))
@@ -40,6 +40,9 @@ typedef bool (*NativeMethodPtr)(VM* vm, Obj* self, int argCount, bool shouldRetu
 
 #define CHECK_NATIVE_METHOD(val) \
     (isObjType(val, OBJ_NATIVE_METHOD))
+
+#define CHECK_DLL_CONTAINER(val) \
+    (isObjType(val, OBJ_DLL_CONTAINER))
 
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
@@ -80,6 +83,9 @@ typedef bool (*NativeMethodPtr)(VM* vm, Obj* self, int argCount, bool shouldRetu
 #define AS_NATIVE_METHOD(val) \
     ((ObjNativeMethod*)AS_OBJ(val))
 
+#define AS_DLL_CONTAINER(val) \
+    ((ObjDllContainer*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
@@ -93,7 +99,8 @@ typedef enum {
     OBJ_INSTANCE,
     OBJ_METHOD,
     OBJ_TABLE,
-    OBJ_NATIVE_METHOD
+    OBJ_NATIVE_METHOD,
+    OBJ_DLL_CONTAINER
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -174,6 +181,13 @@ struct ObjNativeMethod {
     NativeMethodPtr function;
 };
 
+struct ObjDllContainer {
+    OBJ_HEAD;
+    ObjString* fileName;
+    bool closed;
+    void* handle;
+};
+
 ObjString* allocateRawString(VM* vm, int length);
 ObjString* allocateString(VM* vm, const char* chars, int length);
 ObjString* strConcat(VM* vm, Value val1, Value val2);
@@ -190,6 +204,7 @@ ObjInstance* allocateInstance(VM* vm, ObjClass* klass);
 ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self, NativeMethodPtr methodPtr);
 ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
 ObjTable* allocateTable(VM* vm);
+ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 

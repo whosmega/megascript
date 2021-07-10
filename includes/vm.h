@@ -32,6 +32,7 @@ typedef struct {
     PtrTable arrayMethods;     /* Used for storing methods for arrays */ 
     PtrTable stringMethods;     
     PtrTable tableMethods;
+    PtrTable dllMethods;
 
     Obj* ObjHead;       /* Used for tracking the object linked list */
     ObjUpvalue* UpvalueHead;
@@ -62,6 +63,8 @@ bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn);
+bool msmethod_dll_close(VM* vm, Obj* self, int argCount, bool shouldReturn);
+bool msmethod_dll_query(VM* vm, Obj* self, int argCount, bool shouldReturn);
 /*          API             */ 
 void msapi_runtimeError(VM* vm, const char* format, ...); 
 bool msapi_pushCallFrame(VM* vm, ObjClosure* closure);

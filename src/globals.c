@@ -29,7 +29,7 @@ void injectGlobals(VM* vm) {
 }
 
 
-bool msglobal_print(VM* vm, int argCount, int returnCount) {
+bool msglobal_print(VM* vm, int argCount, bool shouldReturn) {
     
     for (int i = argCount - 1; i >= 0; i--) {
         if (i != argCount - 1) printf("    ");
@@ -37,7 +37,7 @@ bool msglobal_print(VM* vm, int argCount, int returnCount) {
     }
     msapi_popn(vm, argCount + 1);       // pop the function itself too
     
-    if (returnCount == 1) {
+    if (shouldReturn) {
         msapi_push(vm, NIL());
     }
 
@@ -45,17 +45,17 @@ bool msglobal_print(VM* vm, int argCount, int returnCount) {
     return true;
 }
 
-bool msglobal_clock(VM* vm, int argCount, int returnCount) {
+bool msglobal_clock(VM* vm, int argCount, bool shouldReturn) {
     msapi_popn(vm, argCount + 1) ;
     
-    if (returnCount == 1) {
+    if (shouldReturn) {
         msapi_push(vm, NATIVE_TO_NUMBER((double)clock() / CLOCKS_PER_SEC));
     }
 
     return true;
 }
 
-bool msglobal_str(VM* vm, int argCount, int returnCount) {
+bool msglobal_str(VM* vm, int argCount, bool shouldReturn) {
     if (argCount == 0) {
         msapi_runtimeError(vm, "Expected an argument in the 'str() global");
         return false;
@@ -65,7 +65,7 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
     Value thing = msapi_peek(vm, argCount - 1);
     msapi_popn(vm, argCount + 1);
 
-    if (returnCount == 0) return true; 
+    if (!shouldReturn) return true; 
     switch (thing.type) {
         case VAL_NUMBER: {
             snprintf(buffer, 1000, "%g", AS_NUMBER(thing));
@@ -116,6 +116,12 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
                 case OBJ_TABLE:
                     msapi_push(vm, OBJ(allocateString(vm, "table", 5)));
                     break;
+                case OBJ_NATIVE_METHOD:
+                    msapi_push(vm, OBJ(AS_NATIVE_METHOD(thing)->name));
+                    break;
+                case OBJ_DLL_CONTAINER:
+                    msapi_push(vm, OBJ(AS_DLL_CONTAINER(thing)->fileName));
+                    break;
                 default: msapi_push(vm, NIL()); break;
             }
             break;
@@ -127,7 +133,7 @@ bool msglobal_str(VM* vm, int argCount, int returnCount) {
 
 }
 
-bool msglobal_num(VM* vm, int argCount, int returnCount) {
+bool msglobal_num(VM* vm, int argCount, bool shouldReturn) {
     if (argCount == 0) {
         msapi_runtimeError(vm, "Expected an argument in the 'num()' function");
         return false;
@@ -135,7 +141,7 @@ bool msglobal_num(VM* vm, int argCount, int returnCount) {
     Value val = msapi_peek(vm, argCount - 1);
     msapi_popn(vm, argCount + 1);
  
-    if (returnCount == 0) return true;
+    if (!shouldReturn) return true;
 
     if (val.type != VAL_OBJ && AS_OBJ(val)->type != OBJ_STRING) {
         msapi_push(vm, NIL());
@@ -162,7 +168,7 @@ bool msglobal_num(VM* vm, int argCount, int returnCount) {
     return true;
 }
 
-bool msglobal_input(VM* vm, int argCount, int returnCount) {
+bool msglobal_input(VM* vm, int argCount, bool shouldReturn) {
     if (argCount >= 1) {
         Value value = msapi_peek(vm, 0);
         printValue(value); 
@@ -181,13 +187,13 @@ bool msglobal_input(VM* vm, int argCount, int returnCount) {
     ObjString* string = allocateString(vm, str, len - 1);
     msapi_popn(vm, argCount + 1);
     
-    if (returnCount > 0) {
+    if (shouldReturn) {
         msapi_push(vm, OBJ(string));
     }
     return true;
 }
 
-bool msglobal_type(VM *vm, int argCount, int returnCount) {
+bool msglobal_type(VM *vm, int argCount, bool shouldReturn) {
     if (argCount == 0) {
         msapi_runtimeError(vm, "Expected an argument in the 'type()' global");
         return false;
@@ -196,7 +202,7 @@ bool msglobal_type(VM *vm, int argCount, int returnCount) {
     Value val = msapi_peek(vm, argCount - 1);
     msapi_popn(vm, argCount + 1);
     
-    if (returnCount == 0) return true;
+    if (!shouldReturn) return true;
 
     switch (val.type) {
         case VAL_NIL: 
@@ -245,6 +251,10 @@ bool msglobal_type(VM *vm, int argCount, int returnCount) {
                     break;
                 }
                 case OBJ_NATIVE_METHOD: {
+                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
+                    break;
+                }
+                case OBJ_DLL_CONTAINER: {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }

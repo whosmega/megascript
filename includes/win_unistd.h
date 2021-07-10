@@ -1,4 +1,5 @@
 #ifndef ms_win_unistd_h 
+#ifdef _WIN32
 #define ms_win_unistd_h 
 
 /* My port for some functions of UNIX standard library for windows */
@@ -10,5 +11,5 @@
 #define F_OK 0              /* File Existence Access */ 
 
 #define access _access 
-
+#endif
 #endif

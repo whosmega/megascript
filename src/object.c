@@ -1,6 +1,7 @@
 #include "../includes/common.h"
 #include <stdint.h>
 #include <string.h>
+#include <dlfcn.h>
 #include "../includes/memory.h"
 #include "../includes/object.h"
 #include "../includes/value.h"
@@ -206,6 +207,17 @@ ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self,
     return method;
 }
 
+ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle) {
+    ObjDllContainer* object = (ObjDllContainer*)allocateObject(vm,
+            sizeof(ObjDllContainer), OBJ_DLL_CONTAINER);
+
+    object->fileName = fileName;
+    object->handle = handle;
+    object->closed = false;
+
+    return object;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
@@ -270,6 +282,9 @@ void printObject(Value value) {
         }
         case OBJ_NATIVE_METHOD:
             printf("Native Method <%s>", AS_NATIVE_METHOD(value)->name->allocated);
+            break;
+        case OBJ_DLL_CONTAINER:
+            printf("Dll Object <%s>", AS_DLL_CONTAINER(value)->fileName->allocated);
             break;
         default: return;
     }
@@ -345,6 +360,17 @@ void freeObject(VM* vm, Obj* obj) {
         }
         case OBJ_NATIVE_METHOD: {
             reallocate(vm, (ObjNativeMethod*)obj, sizeof(ObjNativeMethod), 0);
+            break;
+        }
+        case OBJ_DLL_CONTAINER: {
+            ObjDllContainer* container = (ObjDllContainer*)obj;
+
+            if (!container->closed) {
+                dlclose(container->handle);
+
+                printf("Warning : Unclosed DLL '%s'\n", container->fileName->allocated);
+            }
+            reallocate(vm, container, sizeof(ObjDllContainer), 0);
             break;
         }
         default: return;

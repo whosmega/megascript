@@ -12,13 +12,14 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 
 #ifdef _WIN32
 #include "win_unistd.h"                 /* File system checking */ 
-#include <libloaderapi.h>               /* Loading DLLs */ 
+#include "win_dlfcn.h"                  /* Loading DLLs */ 
 #else
 #include <unistd.h>                     /* File system checking */ 
 #include <dlfcn.h>                      /* Loading DLLs */ 
@@ -82,6 +83,14 @@ static void injectTableMethods(VM* vm) {
     insertPtrTable(&vm->tableMethods, string, &msmethod_table_keys);
 }
 
+static void injectDllMethods(VM* vm) {
+    ObjString* closeString = allocateString(vm, "close", 5);
+    ObjString* queryString = allocateString(vm, "query", 5); 
+    
+    insertPtrTable(&vm->dllMethods, queryString, &msmethod_dll_query);
+    insertPtrTable(&vm->dllMethods, closeString, &msmethod_dll_close);
+}
+
 void initVM(VM* vm) {
     vm->frameCount = 0;
     vm->ObjHead = NULL;
@@ -95,6 +104,8 @@ void initVM(VM* vm) {
     initPtrTable(&vm->arrayMethods);
     initPtrTable(&vm->stringMethods);
     initPtrTable(&vm->tableMethods);
+    initPtrTable(&vm->dllMethods);
+
     resetStack(vm);
     vm->running = false;
     initTable(&vm->importCache);
@@ -103,6 +114,7 @@ void initVM(VM* vm) {
     injectArrayMethods(vm);
     injectStringMethods(vm);
     injectTableMethods(vm);
+    injectDllMethods(vm);
     // Setup globals 
     injectGlobals(vm);
 }
@@ -114,6 +126,7 @@ void freeVM(VM* vm) {
     freePtrTable(&vm->arrayMethods);
     freePtrTable(&vm->stringMethods);
     freePtrTable(&vm->tableMethods);
+    freePtrTable(&vm->dllMethods);
     freeTable(&vm->importCache);
     freeObjects(vm);
     FREE_ARRAY(Obj*, vm->greyStack, vm->greyCapacity);
@@ -352,26 +365,35 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
-static FILE* openFile(VM* vm, char* path) {
+static char* findFile(VM* vm, char* path) {
+    /* This function searches for the file in all supported ways */ 
+   
     if (access(path, F_OK) == -1) {
-        
-        // check lib 
-        char newPath[strlen(path) + 5];         // + lib/ + '\0' 
-        strcpy(newPath, "lib/");
-        strcat(newPath, path);
-        
-        if (access(newPath, F_OK) != -1) {
-            FILE* file = fopen(newPath, "r");
-            return file;
+        /* Not in current directory */ 
+        char* var = getenv("MEGPATH");
+        if (var != NULL) {
+            /* User has set env variable */ 
+            int length = strlen(var) + strlen(path) + 2;
+            char* chars = (char*)reallocate(vm, NULL, 0, sizeof(char) * length);
+            strcpy(chars, var);
+            strcat(chars, "/");
+            strcat(chars, path); 
+            chars[length] = '\0';
+
+            if (access(chars, F_OK) != -1) {
+                /* We found it bois */
+                return chars;
+            }
         }
-
-        msapi_runtimeError(vm, "Cannot access file %s", path);
+        msapi_runtimeError(vm, "Unable to locate file : %s", path);
         return NULL;
+    } else {
+        int length = strlen(path);
+        char* chars = (char*)reallocate(vm, NULL, 0, sizeof(char) * length);
+        chars[length] = '\0';
+        strcpy(chars, path);
+        return chars;
     }
-
-    // we found it in the current dir 
-    FILE* file = fopen(path, "r");
-    return file;
 }
 
 static bool import(VM* vm, ObjString* importPath) {
@@ -407,18 +429,19 @@ static bool import(VM* vm, ObjString* importPath) {
 
     if (!extension || strcmp(extension, "meg") == 0) {
         // meg files
-        FILE* file;
+        char* mainpath = NULL;
         if (!extension) {
             char path[importPath->length + 5];              // .meg + '\0' = 5
             strcpy(path, importPath->allocated);
             strcat(path, ".meg");
             
-            file = openFile(vm, path);
-            if (file == NULL) return false;
+            mainpath = findFile(vm, path);
         } else {
-            file = openFile(vm, importPath->allocated);
-            if (file == NULL) return false;
+            mainpath = findFile(vm, importPath->allocated);
         }
+
+        if (mainpath == NULL) return false; 
+        FILE* file = fopen(mainpath, "r");
         
 
         // The file has been found, opened and is a verified .meg file
@@ -429,7 +452,7 @@ static bool import(VM* vm, ObjString* importPath) {
         char* string = (char*)reallocate(vm, NULL, 0, length + 1);
         fread(string, 1, length, file);
         fclose(file);
-
+        free(mainpath);
         // We have the contents of the file now 
         ObjFunction* function = allocateFunction(vm, importPath, 0);
         push(vm, OBJ(function));
@@ -462,18 +485,36 @@ static bool import(VM* vm, ObjString* importPath) {
         if (!callClosure(vm, closure, false, 0)) return false;
     } else if (strcmp(extension, "so") == 0 || strcmp(extension, "dll") == 0) {
         // so/dll 
-#ifdef _WIN32
+            
+        // Check Cache 
+        Value cache;
+        bool foundCache = getTable(&vm->importCache, fileName, &cache);
 
-#else 
-        /* Linux */ 
-        void* handler = dlopen(importPath->allocated, RTLD_NOW);
-        if (handler == NULL) {
+        if (foundCache) {
+            insertTable(&vm->globals, fileName, cache);
+            return true;
+        }
+
+        char* path = findFile(vm, importPath->allocated);
+        if (path == NULL) return false;
+        
+
+        void* handle = dlopen(path, RTLD_NOW);
+        free(path);
+        if (handle == NULL) {
+            char* err = dlerror();
+            if (err != NULL) {
+                printf("%s\n", err);
+            }
             msapi_runtimeError(vm, "Error opening dynamic link library");
+
             return false; 
         }
 
-
-#endif 
+        ObjDllContainer* container = allocateDllContainer(vm, fileName, handle);
+        insertTable(&vm->importCache, fileName, OBJ(container));
+        insertTable(&vm->globals, fileName, OBJ(container));
+        
     } else {
         msapi_runtimeError(vm, "Cannot open file : Unknown file type");
         return false;
@@ -674,6 +715,50 @@ bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn) {
 
     popn(vm, argCount + 1);
     push(vm, OBJ(array));
+    return true;
+}
+
+bool msmethod_dll_close(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    popn(vm, argCount + 1);
+    ObjDllContainer* container = (ObjDllContainer*)self;
+    
+    if (container->closed) {
+        printf("Warning : DLL object has already been closed\n");
+        return true;
+    }
+
+    dlclose(container->handle);
+    container->handle = NULL;
+    container->closed = true;
+    
+    if (shouldReturn) push(vm, NIL());
+    return true;
+}
+
+bool msmethod_dll_query(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    if (argCount < 1) {
+        msapi_runtimeError(vm, "Expected query string");
+        return false;
+    }
+
+    Value query = vm->stackTop[-argCount];
+
+    if (!CHECK_STRING(query)) {
+        msapi_runtimeError(vm, "Expected argument to be a string");
+        return false;
+    }
+    
+    ObjDllContainer* container = (ObjDllContainer*)self;
+
+    if (container->closed) {
+        msapi_runtimeError(vm, "Attempt to query a closed dll");
+        return false;
+    }
+
+    popn(vm, argCount + 1);
+    NativeFuncPtr ptr = dlsym(container->handle, AS_NATIVE_STRING(query));
+    
+    push(vm, ptr == NULL ? NIL() : OBJ(allocateNativeFunction(vm, AS_STRING(query), ptr)));
     return true;
 }
 /* ---------------------------------------------- */
@@ -1625,6 +1710,13 @@ static InterpretResult run(VM* vm) {
                         bool result = invokeNativeMethod(vm, string,
                                 callVal.as.obj, argCount, shouldReturn, &vm->stringMethods);
 
+                        if (!result) return INTERPRET_RUNTIME_ERROR;
+                        break;
+                    }
+                    case OBJ_DLL_CONTAINER: {
+                        bool result = invokeNativeMethod(vm, string,
+                                callVal.as.obj, argCount, shouldReturn, &vm->dllMethods);
+                        
                         if (!result) return INTERPRET_RUNTIME_ERROR;
                         break;
                     }

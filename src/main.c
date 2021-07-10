@@ -11,8 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define V_MAJOR 0
-#define V_MINOR 1
+#define V_MAJOR 1
+#define V_MINOR 2
 
 char* readFile(const char* path) {
     FILE* file = fopen(path, "rb");
@@ -109,8 +109,7 @@ void repl() {
     }
 }
 
-int main(int argc, char* argv[]) {
-
+int main(int argc, char* argv[]) {   
     if (argc < 2) {
         repl();
         return 0;
