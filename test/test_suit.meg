@@ -184,7 +184,7 @@ func test_table():
 end 
 
 func test_import():
-    import "json" 
+    import "lib/json" 
     if !json:
         return false 
     end 
