@@ -17,7 +17,7 @@ BIN =  chunk.o debug.o globals.o memory.o \
 	   main.o object.o table.o vm.o 
 
 $(EXE) : $(BIN)
-	$(CC) $(CLIBS) $(CFLAGS) -rdynamic $(BIN) -o $(EXE)
+	$(CC) $(CLIBS) $(CFLAGS) -export-dynamic $(BIN) -o $(EXE)
 	$(MV) *.o bin/
 
 chunk.o : includes/chunk.h includes/memory.h includes/value.h \
@@ -72,7 +72,7 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 	   includes/object.h includes/value.h includes/table.h includes/globals.h \
 	   includes/memory.h includes/compiler.h\
 	   src/vm.c 
-	$(CC) $(CFLAGS) -rdynamic -c src/vm.c 
+	$(CC) $(CFLAGS) -export-dynamic -c src/vm.c 
 
 clean:
 	$(RM) bin/*.o 

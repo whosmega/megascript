@@ -1,12 +1,15 @@
 #ifndef ms_win_dlfcn_h
 #ifdef _WIN32
-#define ms_win_dlfcn_h 
-#include <libloaderapi.h>
+#define ms_win_dlfcn_h
+#include <windows.h>
 
 /* We define an inline function for handling dlopens, the second parameter is unused 
  * and is only present for compatibility purposes */ 
+#define RTLD_NOW 0
+#define RTLD_LAZY 1 
+
 static inline HINSTANCE dlopen(const char* file, int _) {
-    return (void*)LoadLibraryA(TEXT(file));
+    return (void*)LoadLibrary(TEXT(file));
 }
 
 /* Another inline function for indexing symbols from the handle */ 

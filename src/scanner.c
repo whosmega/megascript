@@ -18,7 +18,7 @@ static Token makeError(Scanner* scanner, const char* message) {
     return errToken;
 }
 
-static Token makeToken(Scanner* scanner, TokenType type) {
+static Token makeToken(Scanner* scanner, TokenTyp type) {
     Token token;
     token.type = type;
     token.line = scanner->line;
@@ -27,7 +27,7 @@ static Token makeToken(Scanner* scanner, TokenType type) {
     return token;
 }
 
-static TokenType checkKeyword(Scanner* scanner, int start, int length, const char* rest, TokenType type) {
+static TokenTyp checkKeyword(Scanner* scanner, int start, int length, const char* rest, TokenTyp type) {
     if (scanner->current - scanner->start == start + length && (memcmp((char*)scanner->start + start, rest, length) == 0)) {
         /* If the length of the characters is same and the characters themselves are same then 
          * return the given type, otherwise return identifier */
@@ -156,7 +156,7 @@ static Token scanNumber(Scanner* scanner) {
 
 static Token scanIdentifier(Scanner* scanner) {
    while (isAlphaNumeric(peek(scanner))) advance(scanner);
-   TokenType type = TOKEN_IDENTIFIER;
+   TokenTyp type = TOKEN_IDENTIFIER;
 
    switch (scanner->start[0]) {
        case 'a': type = checkKeyword(scanner, 1, 2, "nd", TOKEN_AND); break;

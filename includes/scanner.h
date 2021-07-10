@@ -34,10 +34,10 @@ typedef enum {
 
     TOKEN_RANGE, TOKEN_VAR_ARGS,                                                  // [{1..4}, abc(args...)]
     TOKEN_EOF, TOKEN_ERROR
-} TokenType;
+} TokenTyp;
 
 typedef struct {
-    TokenType type;
+    TokenTyp type;
     const char* start;
     int length;
     int line;

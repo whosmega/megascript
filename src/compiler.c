@@ -162,13 +162,13 @@ static void advance(Scanner* scanner, Parser* parser) {
     }
 }
 
-static bool match(Scanner* scanner, Parser* parser, TokenType type) {
+static bool match(Scanner* scanner, Parser* parser, TokenTyp type) {
     if (parser->current.type != type) return false;
     advance(scanner, parser);
     return true;
 }
 
-static void consume(Scanner* scanner, Parser* parser, TokenType type, const char* message) {
+static void consume(Scanner* scanner, Parser* parser, TokenTyp type, const char* message) {
     if (parser->current.type == type) {
         advance(scanner, parser);
         return;
@@ -302,7 +302,7 @@ static void equality(Scanner* scanner, Parser* parser) {
     while (match(scanner, parser, TOKEN_EQUAL_EQUAL) ||
            match(scanner, parser, TOKEN_BANG_EQUAL)) {
         
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
         /* Parse the right operand */
         comparison(scanner, parser);
 
@@ -329,7 +329,7 @@ static void comparison(Scanner* scanner, Parser* parser) {
            match(scanner, parser, TOKEN_LESS) || 
            match(scanner, parser, TOKEN_LESS_EQUAL)) {
 
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
         /* Parse the right operand */
         term(scanner, parser);
 
@@ -360,7 +360,7 @@ static void term(Scanner* scanner, Parser* parser) {
     while (match(scanner, parser, TOKEN_PLUS) ||
            match(scanner, parser, TOKEN_MINUS)) {
 
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
 
         /* Parse the right operand */ 
         factor(scanner, parser);
@@ -386,7 +386,7 @@ static void factor(Scanner* scanner, Parser* parser) {
     while (match(scanner, parser, TOKEN_ASTERISK) ||
            match(scanner, parser, TOKEN_SLASH)) {
 
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
         highestBinary(scanner, parser);
 
         switch (type) {
@@ -406,7 +406,7 @@ static void factor(Scanner* scanner, Parser* parser) {
 static void highestBinary(Scanner* scanner, Parser* parser) {
     unary(scanner, parser);
     while (match(scanner, parser, TOKEN_EXP)) {
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
         unary(scanner, parser);
         
         switch (type) {
@@ -424,7 +424,7 @@ static void unary(Scanner* scanner, Parser* parser) {
     if (match(scanner, parser, TOKEN_BANG) ||
         match(scanner, parser, TOKEN_MINUS)||
         match(scanner, parser, TOKEN_HASH)) {
-        TokenType type = parser->previous.type;
+        TokenTyp type = parser->previous.type;
         call(scanner, parser);
         switch (type) {
             case TOKEN_BANG:
