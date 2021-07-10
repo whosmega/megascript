@@ -1,13 +1,18 @@
 #include "../includes/common.h"
 #include <stdint.h>
 #include <string.h>
-#include <dlfcn.h>
 #include "../includes/memory.h"
 #include "../includes/object.h"
 #include "../includes/value.h"
 #include "../includes/vm.h"
 #include "../includes/table.h"
 #include "../includes/debug.h"
+
+#ifdef _WIN32
+#include "../includes/win_dlfnc.h"
+#else 
+#include <dlfcn.h>
+#endif
 
 /*
     allocateObject allocates the given size which can be the size of any of its subsidaries (ObjString, ect) 

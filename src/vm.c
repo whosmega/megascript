@@ -18,8 +18,8 @@
 #include <sys/types.h>
 
 #ifdef _WIN32
-#include "win_unistd.h"                 /* File system checking */ 
-#include "win_dlfcn.h"                  /* Loading DLLs */ 
+#include "../includes/win_unistd.h"                 /* File system checking */ 
+#include "../includes/win_dlfnc.h"                  /* Loading DLLs */ 
 #else
 #include <unistd.h>                     /* File system checking */ 
 #include <dlfcn.h>                      /* Loading DLLs */ 
