@@ -1,15 +1,18 @@
 CC = gcc 
 CFLAGS = -O2
-CLIBS = -lm -ldl
 
 ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
-EXE := mega.exe
-RM := del
-MV := move
+EXE = mega.exe
+RM = del
+MV = move
+CLIBS = -lm -ldl 
+DYNAMIC_FLG = 
 else
-EXE := mega
-RM := rm
-MV := mv
+EXE = mega
+RM = rm
+MV = mv
+CLIBS = -lm
+DYNAMIC_FLG = --export-dynamic
 endif
 
 BIN =  chunk.o debug.o globals.o memory.o \
@@ -17,8 +20,8 @@ BIN =  chunk.o debug.o globals.o memory.o \
 	   main.o object.o table.o vm.o 
 
 $(EXE) : $(BIN)
-	$(CC) $(CLIBS) $(CFLAGS) -export-dynamic $(BIN) -o $(EXE)
-	$(MV) *.o bin/
+	$(CC) $(CLIBS) $(CFLAGS) $(DYNAMIC_FLG) $(BIN) -o $(EXE)
+	$(MV) *.o bin
 
 chunk.o : includes/chunk.h includes/memory.h includes/value.h \
 		  src/chunk.c
@@ -72,7 +75,7 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 	   includes/object.h includes/value.h includes/table.h includes/globals.h \
 	   includes/memory.h includes/compiler.h\
 	   src/vm.c 
-	$(CC) $(CFLAGS) -export-dynamic -c src/vm.c 
+	$(CC) $(CFLAGS) -c src/vm.c 
 
 clean:
 	$(RM) bin/*.o 
