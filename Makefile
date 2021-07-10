@@ -12,7 +12,7 @@ EXE = mega
 RM = rm
 MV = mv
 CLIBS = -lm
-DYNAMIC_FLG = --export-dynamic
+DYNAMIC_FLG = -export-dynamic
 endif
 
 BIN =  chunk.o debug.o globals.o memory.o \
