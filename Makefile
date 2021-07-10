@@ -5,13 +5,13 @@ ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
 EXE = mega.exe
 RM = del
 MV = move
-CLIBS = -lm -ldl 
+CLIBS = -lm 
 DYNAMIC_FLG = 
 else
 EXE = mega
 RM = rm
 MV = mv
-CLIBS = -lm
+CLIBS = -lm -ldl
 DYNAMIC_FLG = -export-dynamic
 endif
 
