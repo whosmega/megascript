@@ -17,11 +17,17 @@ endif
 
 BIN =  chunk.o debug.o globals.o memory.o \
 	   scanner.o value.o compiler.o gcollect.o \
-	   main.o object.o table.o vm.o 
+	   main.o object.o table.o vm.o \
+	    
+LIB_BIN = http.o
 
-$(EXE) : $(BIN)
+DLLS = http.dll
+
+$(EXE) $(DLLS): $(BIN) $(LIB_BIN)
 	$(CC) $(CLIBS) $(CFLAGS) $(DYNAMIC_FLG) $(BIN) -o $(EXE)
+	$(CC) $(CFLAGS) -shared http.o -o http.dll 
 	$(MV) *.o bin
+	$(MV) *.dll lib
 
 chunk.o : includes/chunk.h includes/memory.h includes/value.h \
 		  src/chunk.c
@@ -76,6 +82,13 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 	   includes/memory.h includes/compiler.h\
 	   src/vm.c 
 	$(CC) $(CFLAGS) -c src/vm.c 
+
+# libraries 
+
+http.o : includes/vm.h includes/memory.h \
+		 core/http.c 
+	$(CC) $(CFLAGS) -fpic -c core/http.c 
+
 
 clean:
 	$(RM) bin/*.o 

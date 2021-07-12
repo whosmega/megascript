@@ -1,6 +1,7 @@
 #include "../includes/globals.h"
 #include "../includes/object.h"
 #include "../includes/value.h"
+#include "../includes/msapi.h"
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +63,7 @@ bool msglobal_str(VM* vm, int argCount, bool shouldReturn) {
     }
 
     char buffer[1000];
-    Value thing = msapi_peek(vm, argCount - 1);
+    Value thing = msapi_getArg(vm, 1, argCount);
     msapi_popn(vm, argCount + 1);
 
     if (!shouldReturn) return true; 
@@ -138,7 +139,7 @@ bool msglobal_num(VM* vm, int argCount, bool shouldReturn) {
         msapi_runtimeError(vm, "Expected an argument in the 'num()' function");
         return false;
     }
-    Value val = msapi_peek(vm, argCount - 1);
+    Value val = msapi_getArg(vm, 1, argCount);
     msapi_popn(vm, argCount + 1);
  
     if (!shouldReturn) return true;
@@ -170,7 +171,7 @@ bool msglobal_num(VM* vm, int argCount, bool shouldReturn) {
 
 bool msglobal_input(VM* vm, int argCount, bool shouldReturn) {
     if (argCount >= 1) {
-        Value value = msapi_peek(vm, 0);
+        Value value = msapi_getArg(vm, 1, argCount);
         printValue(value); 
     }
     char str[1000];
@@ -199,7 +200,7 @@ bool msglobal_type(VM *vm, int argCount, bool shouldReturn) {
         return false;
     }
 
-    Value val = msapi_peek(vm, argCount - 1);
+    Value val = msapi_getArg(vm, 1, argCount);
     msapi_popn(vm, argCount + 1);
     
     if (!shouldReturn) return true;

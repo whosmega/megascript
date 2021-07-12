@@ -8,6 +8,7 @@
 #include "../includes/globals.h"
 #include "../includes/memory.h"
 #include "../includes/compiler.h"
+#include "../includes/msapi.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -236,6 +237,10 @@ void msapi_pushn(VM* vm, Value value, unsigned int count) {
 
 void msapi_popn(VM* vm, unsigned int count) {
     return popn(vm, count);
+}
+
+Value msapi_getArg(VM *vm, int number, int argCount) {
+    return vm->stackTop[-argCount + number - 1]; 
 }
 
 //--------------------------------------------
@@ -657,14 +662,16 @@ bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn)
         msapi_runtimeError(vm, "Insufficient argument count");
         return false;
     }
+    Value _arg1 = msapi_getArg(vm, 1, argCount);
+    Value _arg2 = msapi_getArg(vm, 2, argCount);
 
-    if (!CHECK_NUMBER(peek(vm, 1)) || !CHECK_NUMBER(peek(vm, 0))) {
+    if (!CHECK_NUMBER(_arg1) || !CHECK_NUMBER(_arg2)) {
         msapi_runtimeError(vm, "Expected arguments to be numberS");
         return false;
     }
     
-    double arg1 = AS_NUMBER(peek(vm, 1));
-    double arg2 = AS_NUMBER(peek(vm, 0));
+    double arg1 = AS_NUMBER(_arg1);
+    double arg2 = AS_NUMBER(_arg2);
 
     if (fmod(arg1, 1) != 0 || arg1 < 0) {
         msapi_runtimeError(vm, "Expected 'start' to be a positive integer");
@@ -741,7 +748,7 @@ bool msmethod_dll_query(VM* vm, Obj* self, int argCount, bool shouldReturn) {
         return false;
     }
 
-    Value query = vm->stackTop[-argCount];
+    Value query = msapi_getArg(vm, 1, argCount);
 
     if (!CHECK_STRING(query)) {
         msapi_runtimeError(vm, "Expected argument to be a string");

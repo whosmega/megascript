@@ -65,18 +65,5 @@ bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn
 bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_dll_close(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_dll_query(VM* vm, Obj* self, int argCount, bool shouldReturn);
-/*          API             */ 
-void msapi_runtimeError(VM* vm, const char* format, ...); 
-bool msapi_pushCallFrame(VM* vm, ObjClosure* closure);
-void msapi_popCallFrame(VM* vm);
-bool msapi_isFalsey(Value value);
-bool msapi_isEqual(Value value1, Value value2);
-void msapi_push(VM* vm, Value value);
-Value msapi_pop(VM* vm);
-Value msapi_peek(VM* vm, unsigned int index);
-Value* msapi_peekptr(VM* vm, unsigned int index);
-void msapi_pushn(VM* vm, Value value, unsigned int count);
-void msapi_popn(VM* vm, unsigned int count); 
-
 
 #endif
