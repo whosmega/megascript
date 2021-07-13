@@ -708,7 +708,7 @@ bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn)
 }
 
 bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn) {
-    if (!shouldReturn) return true;
+    popn(vm, argCount + 1);
     ObjArray* array = allocateArray(vm);
     ObjTable* table = (ObjTable*)self;
 
@@ -720,8 +720,9 @@ bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn) {
         }
     }
 
-    popn(vm, argCount + 1);
-    push(vm, OBJ(array));
+    if (shouldReturn) {
+        push(vm, OBJ(array));
+    }
     return true;
 }
 
@@ -1738,7 +1739,7 @@ static InterpretResult run(VM* vm) {
                             frame = &vm->frames[vm->frameCount - 1];
                             break;
                         }
-                        NativeMethodPtr* ptr = NULL;
+                        NativeMethodPtr ptr = NULL;
                         bool foundBoundMethod = getPtrTable(&vm->tableMethods, string, (void*)&ptr);
 
                         if (!foundBoundMethod) {                        
@@ -1766,10 +1767,9 @@ static InterpretResult run(VM* vm) {
                             msapi_runtimeError(vm, "Attempt to invoke a nil value");
                             return INTERPRET_RUNTIME_ERROR;
                         }
-
-                        bool result = (*ptr)(vm, AS_OBJ(callVal), argCount, shouldReturn);
-                        if (!result) return INTERPRET_RUNTIME_ERROR; 
                         
+                        bool result = (*ptr)(vm, callVal.as.obj, argCount, shouldReturn);
+                        if (!result) return INTERPRET_RUNTIME_ERROR;  
                         break;
                     }
                     default: 
@@ -2053,7 +2053,8 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                if (AS_NUMBER(increment)) {
+                if (AS_NUMBER(increment) == 0) {
+                    printf("%g\n", AS_NUMBER(increment));
                     msapi_runtimeError(vm, "Cannot divide by 0");
                     return INTERPRET_RUNTIME_ERROR;
                 }
@@ -2080,7 +2081,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                if (AS_NUMBER(increment)) {
+                if (AS_NUMBER(increment) == 0) {
                     msapi_runtimeError(vm, "Cannot divide by 0");
                     return INTERPRET_RUNTIME_ERROR;
                 }
@@ -2210,7 +2211,7 @@ static InterpretResult run(VM* vm) {
                     msapi_runtimeError(vm, "Non-numeric value to '/='");
                     return INTERPRET_RUNTIME_ERROR;
                 }
-                if (AS_NUMBER(new)) {
+                if (AS_NUMBER(new) == 0) {
                     msapi_runtimeError(vm, "Cannot divide by 0");
                     return INTERPRET_RUNTIME_ERROR;
                 }

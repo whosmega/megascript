@@ -1,0 +1,96 @@
+
+func arithmetic_op():
+    var a = 1 + 2
+    var b = 3 - 2 
+    var c = 1 * 2 
+    var d = 1/2
+    var e = 1^2 
+    
+    if a != 3:
+        return "Error with addition"
+    elseif b != 1:
+        return "Error with subtraction"
+    elseif c != 2:
+        return "Error with multiplication"
+    elseif d != 0.5:
+        return "Error with division"
+    elseif e != 1:
+        return "Error with exponent"
+    end 
+
+    return true 
+end 
+
+func unary_op():
+    var a = -1 
+    var b = !1 
+    var c = #[]
+
+    if a > 0:
+        return "Error with unary negation"
+    elseif b != false:
+        return "Error with unary not"
+    elseif c != 0:
+        return "Error with unary length"
+    end 
+
+    return true 
+end 
+
+func logical_op():
+    if 5 and 4 != 4:
+        return "Error with 'and'"
+    elseif 5 and false != false:
+        return "Error with 'and', did not return last falsy (operand 2)"
+    elseif nil and 5 != nil:
+        return "Error with 'and', did not return first falsy (operand 1)"
+    elseif (9 or false) != 9:
+        return "Error with 'or'"
+    elseif nil or 5 != 5: 
+        return "Error with 'or', did not return truthy value"
+    elseif 5 and false or 4 != 4:
+        return "Error with if statement shortcut using 'and' 'or'"
+    end 
+
+    return true 
+end 
+
+func comparison_op():
+    if 5 != 5:
+        return "Error with '!='"
+    elseif 5 == 4:
+        return "Error with '=='"
+    elseif 5 > 3 != true or 5 < 3 != false:
+        return "Error with '>' or '<'"
+    elseif 5 >= 3 != true or 5 <= 3 != false:
+        return "Error with '>=' or '<='"
+    end 
+
+    return true 
+end 
+
+func assignment_op():
+    var a = 1
+    a = 10
+    if a != 10: return "Error, simple assignment doesn't work" end 
+    a += 1
+    if a != 11: return "Error, '+=' doesn't work" end 
+    a -= 1 
+    if a != 10: return "Error, '-=' doesn't work" end 
+    a *= 2
+    if a != 20: return "Error, '*=' doesn't work" end 
+    a /= 2
+    if a != 10: return "Error, '/=' doesn't work" end 
+    a ^= 2
+    if a != 100: return "Error, '^=' doesn't work" end 
+
+    return true 
+end  
+
+global tests = [
+    arithmetic_op,
+    unary_op,
+    logical_op,
+    comparison_op,
+    assignment_op
+]

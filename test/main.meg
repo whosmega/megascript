@@ -1,0 +1,35 @@
+import "core.meg"
+
+var tests = {
+    "core" = core
+}
+
+var len_tests = #tests.keys() 
+var num_passed = 0
+var num_failed = 0
+var num_total = 0
+
+for _, key in tests.keys():
+    var lib = tests[key]
+
+    var len = #lib.tests 
+    for i, f in lib.tests:
+        var result = f() 
+        var status = "Passed"
+
+        if result != true: status = "Failed" end 
+        print("Ran test " + str(f) + " in module " + key +  " ["+str(i + 1)+"/"+
+              str(len)+"] " + status)
+        if status == "Failed":
+            print(result)
+            num_failed += 1 
+        else:
+            num_passed += 1 
+        end 
+        num_total += 1 
+    end 
+end 
+print("\n")
+print("Total Passed : " + str(num_passed))
+print("Total Failed : " + str(num_failed))
+print("Total : " + str(num_total))
