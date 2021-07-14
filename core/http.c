@@ -47,7 +47,6 @@ SOCKET _newSocket(VM* vm, const char* host, int port) {
         msapi_runtimeError(vm, "Could not connect to host : '%s'", host);
         return -3;
     }
-    printf("Connected to %s on port %d\n", host, port);
     return sockfd;
 } 
 
@@ -74,7 +73,8 @@ bool newSocket(VM* vm, int argCount, bool shouldReturn) {
     SOCKET sockfd = _newSocket(vm, AS_NATIVE_STRING(hostName), AS_NUMBER(port));
 
     if (shouldReturn) {
-        msapi_push(vm, NATIVE_TO_NUMBER(sockfd));
+        ObjWebSocket* socket = allocateWebSocket(vm, sockfd);
+        msapi_push(vm, OBJ(socket));
     }
 
     return true; 
@@ -88,12 +88,20 @@ bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value sockfd = msapi_getArg(vm, 1, argCount);
 
-    if (!CHECK_NUMBER(sockfd)) {
-        msapi_runtimeError(vm, "Expected sockfd to be a number");
+    if (!CHECK_WEB_SOCKET(sockfd)) {
+        msapi_runtimeError(vm, "Expected sockfd to be a web socket");
         return false;
     }
     msapi_popn(vm, argCount + 1);
-    close(AS_NUMBER(sockfd));
+    ObjWebSocket* socket = AS_WEB_SOCKET(sockfd);
+
+    if (socket->closed) {
+        printf("Warning : Socket already closed"); 
+    } else {
+        close(socket->sockfd);
+        socket->closed = true;
+    }
+
     if (shouldReturn) {
         msapi_push(vm, NIL());
     }

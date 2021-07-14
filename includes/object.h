@@ -44,6 +44,9 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 #define CHECK_DLL_CONTAINER(val) \
     (isObjType(val, OBJ_DLL_CONTAINER))
 
+#define CHECK_WEB_SOCKET(val) \
+    (isObjType(val, OBJ_WEB_SOCKET))
+
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
 
@@ -86,6 +89,9 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 #define AS_DLL_CONTAINER(val) \
     ((ObjDllContainer*)AS_OBJ(val))
 
+#define AS_WEB_SOCKET(val) \
+    ((ObjWebSocket*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
@@ -100,7 +106,8 @@ typedef enum {
     OBJ_METHOD,
     OBJ_TABLE,
     OBJ_NATIVE_METHOD,
-    OBJ_DLL_CONTAINER
+    OBJ_DLL_CONTAINER,
+    OBJ_WEB_SOCKET
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -188,6 +195,12 @@ struct ObjDllContainer {
     void* handle;
 };
 
+struct ObjWebSocket {
+    OBJ_HEAD;
+    int sockfd;
+    bool closed;
+};
+
 ObjString* allocateRawString(VM* vm, int length);
 ObjString* allocateString(VM* vm, const char* chars, int length);
 ObjString* strConcat(VM* vm, Value val1, Value val2);
@@ -205,6 +218,7 @@ ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self, Native
 ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
 ObjTable* allocateTable(VM* vm);
 ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle);
+ObjWebSocket* allocateWebSocket(VM* vm, int sockfd);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 

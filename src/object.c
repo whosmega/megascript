@@ -12,6 +12,7 @@
 #include "../includes/win_dlfnc.h"
 #else 
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 
 /*
@@ -223,6 +224,16 @@ ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle)
     return object;
 }
 
+ObjWebSocket* allocateWebSocket(VM* vm, int sockfd) {
+    ObjWebSocket* socket = (ObjWebSocket*)allocateObject(vm,
+            sizeof(ObjWebSocket), OBJ_WEB_SOCKET);
+
+    socket->sockfd = sockfd;
+    socket->closed = false;
+    
+    return socket;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
@@ -290,6 +301,9 @@ void printObject(Value value) {
             break;
         case OBJ_DLL_CONTAINER:
             printf("Dll Object <%s>", AS_DLL_CONTAINER(value)->fileName->allocated);
+            break;
+        case OBJ_WEB_SOCKET:
+            printf("Web Socket <%d>", AS_WEB_SOCKET(value)->sockfd);
             break;
         default: return;
     }
@@ -376,6 +390,17 @@ void freeObject(VM* vm, Obj* obj) {
                 printf("Warning : Unclosed DLL '%s'\n", container->fileName->allocated);
             }
             reallocate(vm, container, sizeof(ObjDllContainer), 0);
+            break;
+        }
+        case OBJ_WEB_SOCKET: {
+            ObjWebSocket* socket = (ObjWebSocket*)obj; 
+
+            if (!socket->closed) {
+                close(socket->sockfd);
+
+                printf("Warning : Unclosed Socket '%d'\n", socket->sockfd);
+            }
+            reallocate(vm, socket, sizeof(ObjWebSocket), 0);
             break;
         }
         default: return;

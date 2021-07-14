@@ -87,10 +87,338 @@ func assignment_op():
     return true 
 end  
 
+func variables():
+    // local and global variables 
+
+    var abc = 100 
+    global abc = 200
+    if abc != 100:
+        return "Error, captured global instead of local"
+    end
+
+    abc = 500 
+    if abc != 500:
+        return "Error, did not update local"
+    end 
+
+    global d = 100 
+    if d != 100:
+        return "Error, did not capture global"
+    end 
+
+    d = 1000 
+    if d != 1000:
+        return "Error, did not update global" 
+    end 
+
+    return true 
+end 
+
+func scope():
+    var a = 100 
+    if true:
+        var a = 200 
+        if a != 200:
+            return "Error, did not capture inner local"
+        end 
+    end 
+    if a != 100:
+        return "Error, something happened to the outer local"
+    end 
+
+    return true 
+end 
+
+func functions():
+    var placeholder
+    func a(b, c):
+        var d = 1
+        return b + c
+    end 
+
+    if a(10, 20) != 30:
+        return "Possible issue with returning"
+    end 
+
+    if placeholder != nil:
+        return "Fatal, outer local modified by function"
+    end
+
+    func variadic(a, b, args...):
+        var total = a + b 
+        for i, v in args:
+            total += v 
+        end 
+        return total 
+    end 
+
+    if variadic(10, 20, 30, 40) != 100:
+        return "Error with local variadic"
+    end 
+    return true 
+end 
+
+func global_functions():
+    global func funct(a, b):
+        return a + b 
+    end 
+
+    if funct(10, 20) != 30:
+        return "Returning issue with global function"
+    end 
+    funct = nil 
+    return true 
+end
+
+func closures():
+    var a = 100 
+    func b():
+        a = 200 
+    end 
+
+    b()
+    if a != 200:
+        return "Closures broken, did not modify outer local"
+    end 
+
+    func c():
+        var abc = 100
+        var def = 100
+        func d():
+            return abc + def 
+        end 
+
+        return d 
+    end 
+
+    if c()() != 200: 
+        return "Closure did not close over variables"
+    end 
+
+    return true 
+end 
+
+func arrays():
+    var a = [10]
+    if a[0] != 10:
+        return "Could not index properly"
+    end 
+    var l = 100 
+    a.insert(100, 200)
+    if a[0] + a[1] + a[2] != 310:
+        return "Error, problem with inserting"
+    end 
+    
+    if l != 100:
+        return "inserting modified variable"
+    end 
+
+    a[2] = 0
+    if a[2] != 0:
+        return "Error, problem with updating"
+    end 
+
+    return true 
+end     
+
+func tables():
+    var t = {"key" = 11}
+    if t["key"] != 11:
+        return "Error, inital keys not found"
+    end 
+
+    if t.key != 11:
+        return "Error, indexing sugar doesnt work"
+    end 
+
+    t["f"] = func(a, b):
+        return a + b 
+    end 
+
+    if t.f(10, 20) != 30:
+        return "Error with table invokes"
+    end 
+
+    if (t.f)(10, 20) != 30:
+        return "Error with solo invokes"
+    end 
+
+    t.f = 100 
+    if t.f != 100:
+        return "Error, updating sugar doesnt work"
+    end 
+
+    // bound methods 
+    if #t.keys() != 2:
+        return "Error with 'keys()'"
+    end 
+
+    var holder = t.keys
+    if #holder() != 2:
+        return "Error with solo 'keys()'"  
+    end 
+
+    return true 
+end 
+
+func classes():
+    var o = 1
+    class A:
+        field = 100 
+        func _init(a, b, c):
+            self.field2 = a + b + c + o
+        end 
+        func normal(a):
+            return a + self.field2 
+        end 
+    end 
+
+    var ins = A(1, 2, 3)
+    if ins.normal(10) != 16 + o:
+        return "Error with methods / fields"
+    end 
+
+    class G:
+        func method():
+            return 1 
+        end 
+
+        field = 1
+    end 
+
+    class B inherits G:
+        func method():
+            return 2 
+        end 
+
+        func test():
+            return super.method() - super.field 
+        end 
+    end 
+
+    class C inherits B: end 
+
+    if C().test() != 0:
+        return "Error with super / inheritance"
+    end 
+
+    return true
+end
+
+func if_statements():
+    var a = 10 
+    var b = 20 
+    var d = false 
+
+    if a > b:
+        d = true 
+    elseif a >= b:
+        d = true 
+    else:
+    end 
+
+    if d: return "Weird error with if statements" end 
+
+    return true
+end 
+
+func loops():
+    // while 
+
+    var a = 0 
+    while a < 10: 
+        a += 1 
+    end 
+
+    if a != 10:
+        return "Error with while loops"
+    end 
+
+    // for loops 
+
+    a = 0
+    for i in 0, 10:
+        a = i 
+    end 
+
+    if a != 10:
+        return "Error with numeric for loops"
+    end 
+    a = 0 
+    for i, v in [10, 20, 9, 2]:
+        a = v 
+
+        if i == 1: break end 
+    end 
+
+    if a != 20:
+        return "Error with iterative for loops"
+    end 
+
+    return true
+end 
+
+func imports():
+    import "lib/json" 
+
+    if json.parse("{\"a\" : 1}").a != 1: 
+        return "Basic json fail, something wrong with imports?"
+    end 
+
+    json = nil
+
+    import "lib/http.dll"
+
+    var open = http.query("newSocket")
+    var close = http.query("closeSocket")
+
+    close(open("www.google.com", 80))
+    http.close()
+    http = nil
+
+    return true 
+end 
+
+func built_in():
+    var p = print 
+    var s = str 
+    var n = num 
+    var c = clock 
+    var t = type 
+    var i = input 
+
+    if s({}) != "table":
+        return "Error with str()"
+    end 
+
+    if n("0.323202") != 0.323202:
+        return "Error with num()"
+    end 
+
+    if t(c()) != "number":
+        return "Error with type()/clock()"
+    end
+
+    return true 
+end
+
 global tests = [
     arithmetic_op,
     unary_op,
     logical_op,
     comparison_op,
-    assignment_op
+    assignment_op,
+
+    variables,
+    scope,
+    functions,
+    global_functions,
+    closures,
+    arrays,
+    tables,
+    classes,
+    if_statements,
+    loops,
+    imports,
+    built_in
 ]
