@@ -19,13 +19,13 @@ BIN =  chunk.o debug.o globals.o memory.o \
 	   scanner.o value.o compiler.o gcollect.o \
 	   main.o object.o table.o vm.o \
 	    
-LIB_BIN = http.o
+LIB_BIN = socket.o
 
-DLLS = http.dll
+DLLS = socket.dll
 
 $(EXE) $(DLLS): $(BIN) $(LIB_BIN)
 	$(CC) $(CLIBS) $(CFLAGS) $(DYNAMIC_FLG) $(BIN) -o $(EXE)
-	$(CC) $(CFLAGS) -shared http.o -o http.dll 
+	$(CC) $(CFLAGS) -shared socket.o -o socket.dll 
 	$(MV) *.o bin
 	$(MV) *.dll lib
 
@@ -85,9 +85,9 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 
 # libraries 
 
-http.o : includes/vm.h includes/memory.h \
-		 core/http.c 
-	$(CC) $(CFLAGS) -fpic -c core/http.c 
+socket.o : includes/vm.h includes/memory.h \
+	core/socket.c 
+	$(CC) $(CFLAGS) -fpic -c core/socket.c 
 
 
 clean:

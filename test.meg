@@ -1,0 +1,14 @@
+import "lib/socket.dll"
+
+var msg = "GET /api HTTP/1.0\r\nHost: www.discord.com\r\n\r\n"
+
+var readSocket = socket.query("readSocket")
+var writeSocket = socket.query("writeSocket")
+var openSocket = socket.query("newSocket")
+var closeSocket = socket.query("closeSocket")
+
+var sock = openSocket("www.discord.com", 80)
+writeSocket(sock, msg)
+print(readSocket(sock))
+closeSocket(sock)
+socket.close()

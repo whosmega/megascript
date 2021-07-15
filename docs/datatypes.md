@@ -37,10 +37,11 @@ They can be enclosed in double quotes `"This is a string"` or single quotes `'Th
 Strings support the following escape sequences:
 1. `\n` : The newline character
 2. `\t` : The tab character
-3. `\b` : The backspace character 
-4. `\"` : An escaped double quote 
-5. `\'` : An escaped single quote
-6. `\\` : An escaped backslash character 
+3. `\b` : The backspace character
+4. `\r` : The carriage return 
+5. `\"` : An escaped double quote 
+6. `\'` : An escaped single quote
+7. `\\` : An escaped backslash character 
 
 Escape sequences can be used within strings when special behaviour is necessary, for example adding newline in a string `"Hello\nWorld"`
 and then printing it will result in the escape character being treated as a newline

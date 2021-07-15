@@ -735,6 +735,11 @@ static void parseString(Scanner* scanner, Parser* parser) {
                         i++;
                         length++;
                         break;
+                    case 'r':
+                        arrayStr[length] = '\r';
+                        i++;
+                        length++;
+                        break;
                     case '\"':
                         arrayStr[length] = '\"';
                         i++;
