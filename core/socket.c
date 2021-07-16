@@ -1,3 +1,9 @@
+/* This library defines the basic functions for simple HTTP/WS connections 
+ * to servers, this library does not work for any HTTPS/WSS connections and 
+ * the ssocket library should be used instead. Both have a similar interface 
+ * which is wrapped up by higher level code to allow REST API Requests */
+
+
 #include <sys/socket.h>         /* socket, connect */ 
 #include <netinet/in.h>         /* sockaddr_in, sockaddr */ 
 #include <netdb.h>              /* hostent, gethostbyname */ 

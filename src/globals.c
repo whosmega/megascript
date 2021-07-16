@@ -123,6 +123,7 @@ bool msglobal_str(VM* vm, int argCount, bool shouldReturn) {
                 case OBJ_DLL_CONTAINER:
                     msapi_push(vm, OBJ(AS_DLL_CONTAINER(thing)->fileName));
                     break;
+                case OBJ_WEB_SSOCKET:
                 case OBJ_WEB_SOCKET:
                     msapi_push(vm, OBJ(allocateString(vm, "socket", 6)));
                     break;
@@ -230,14 +231,6 @@ bool msglobal_type(VM *vm, int argCount, bool shouldReturn) {
                     msapi_push(vm, OBJ(allocateString(vm, "array", 5)));
                     break;
                 }
-                case OBJ_CLOSURE: {
-                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
-                    break;
-                }
-                case OBJ_NATIVE_FUNCTION: {
-                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
-                    break;
-                }
                 case OBJ_CLASS: {
                     msapi_push(vm, OBJ(allocateString(vm, "class", 5)));
                     break;
@@ -246,22 +239,19 @@ bool msglobal_type(VM *vm, int argCount, bool shouldReturn) {
                     msapi_push(vm, OBJ(allocateString(vm, "instance", 8)));
                     break;
                 }
-                case OBJ_METHOD: {
-                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
-                    break;
-                }
                 case OBJ_TABLE: {
                     msapi_push(vm, OBJ(allocateString(vm, "table", 5)));
                     break;
                 }
-                case OBJ_NATIVE_METHOD: {
-                    msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
-                    break;
-                }
+                case OBJ_NATIVE_FUNCTION:
+                case OBJ_CLOSURE:
+                case OBJ_METHOD:
+                case OBJ_NATIVE_METHOD:
                 case OBJ_DLL_CONTAINER: {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }
+                case OBJ_WEB_SSOCKET:
                 case OBJ_WEB_SOCKET: {
                     msapi_push(vm, OBJ(allocateString(vm, "socket", 6)));
                     break;

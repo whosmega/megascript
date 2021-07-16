@@ -11,7 +11,7 @@ else
 EXE = mega
 RM = rm
 MV = mv
-CLIBS = -lm -ldl
+CLIBS = -lm -ldl -lssl -lcrypto
 DYNAMIC_FLG = -export-dynamic
 endif
 
@@ -19,13 +19,14 @@ BIN =  chunk.o debug.o globals.o memory.o \
 	   scanner.o value.o compiler.o gcollect.o \
 	   main.o object.o table.o vm.o \
 	    
-LIB_BIN = socket.o
+LIB_BIN = socket.o ssocket.o 
 
-DLLS = socket.dll
+DLLS = socket.dll ssocket.dll 
 
 $(EXE) $(DLLS): $(BIN) $(LIB_BIN)
 	$(CC) $(CLIBS) $(CFLAGS) $(DYNAMIC_FLG) $(BIN) -o $(EXE)
 	$(CC) $(CFLAGS) -shared socket.o -o socket.dll 
+	$(CC) $(CFLAGS) -shared -lssl -lcrypto ssocket.o -o ssocket.dll 
 	$(MV) *.o bin
 	$(MV) *.dll lib
 
@@ -85,10 +86,14 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 
 # libraries 
 
-socket.o : includes/vm.h includes/memory.h \
+socket.o : includes/vm.h includes/memory.h includes/msapi.h \
 	core/socket.c 
 	$(CC) $(CFLAGS) -fpic -c core/socket.c 
 
+ssocket.o : includes/msapi.h includes/memory.h includes/lib_ssocket.h \
+	core/ssocket.c 
+	$(CC) $(CFLAGS) -fpic -c core/ssocket.c 
 
 clean:
-	$(RM) bin/*.o 
+	$(RM) bin/*.o
+	$(RM) lib/*.dll

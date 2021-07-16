@@ -7,6 +7,7 @@
 #include "../includes/vm.h"
 #include "../includes/table.h"
 #include "../includes/debug.h"
+#include "../includes/lib_ssocket.h"
 
 #ifdef _WIN32
 #include "../includes/win_dlfnc.h"
@@ -234,6 +235,16 @@ ObjWebSocket* allocateWebSocket(VM* vm, int sockfd) {
     return socket;
 }
 
+ObjWebSSocket* allocateWebSSocket(VM* vm, SSOCKET* ssocket) {
+    ObjWebSSocket* sock = (ObjWebSSocket*)allocateObject(vm,
+            sizeof(ObjWebSSocket), OBJ_WEB_SSOCKET);
+
+    sock->ssocket = ssocket;
+    sock->closed = false;
+
+    return sock;
+}
+
 void printObject(Value value) {
     switch (AS_OBJ(value)->type) {
         case OBJ_STRING:
@@ -304,6 +315,9 @@ void printObject(Value value) {
             break;
         case OBJ_WEB_SOCKET:
             printf("Web Socket <%d>", AS_WEB_SOCKET(value)->sockfd);
+            break;
+        case OBJ_WEB_SSOCKET:
+            printf("Secure Web Socket <>");
             break;
         default: return;
     }
@@ -401,6 +415,20 @@ void freeObject(VM* vm, Obj* obj) {
                 printf("Warning : Unclosed Socket '%d'\n", socket->sockfd);
             }
             reallocate(vm, socket, sizeof(ObjWebSocket), 0);
+            break;
+        }
+        case OBJ_WEB_SSOCKET: {
+            ObjWebSSocket* ssocket = (ObjWebSSocket*)obj;
+
+            if (!ssocket->closed) {
+                BIO_free_all(ssocket->ssocket->ssl_bio);
+//                 SSL_CTX_free(ssocket->ssocket->ssl_ctx);
+
+                reallocateArray(ssocket->ssocket, sizeof(SSOCKET), 0);
+                printf("Warning : Unclosed Secure Socket");
+            }
+            
+            reallocate(vm, ssocket, sizeof(ObjWebSSocket), 0);
             break;
         }
         default: return;

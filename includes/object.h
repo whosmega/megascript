@@ -5,6 +5,8 @@
 #include "../includes/value.h"
 #include "../includes/vm.h"
 
+#include "../includes/lib_ssocket.h"
+
 typedef bool (*NativeFuncPtr)(VM*, int, bool);
 typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 
@@ -46,6 +48,9 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 
 #define CHECK_WEB_SOCKET(val) \
     (isObjType(val, OBJ_WEB_SOCKET))
+
+#define CHECK_WEB_SSOCKET(val) \
+    (isObjType(val, OBJ_WEB_SSOCKET))
 
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
@@ -92,6 +97,9 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 #define AS_WEB_SOCKET(val) \
     ((ObjWebSocket*)AS_OBJ(val))
 
+#define AS_WEB_SSOCKET(val) \
+    ((ObjWebSSocket*)AS_OBJ(val))
+
 #define OBJ_HEAD Obj obj
 
 typedef enum {
@@ -107,7 +115,8 @@ typedef enum {
     OBJ_TABLE,
     OBJ_NATIVE_METHOD,
     OBJ_DLL_CONTAINER,
-    OBJ_WEB_SOCKET
+    OBJ_WEB_SOCKET,
+    OBJ_WEB_SSOCKET
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -201,6 +210,12 @@ struct ObjWebSocket {
     bool closed;
 };
 
+struct ObjWebSSocket {
+    OBJ_HEAD;
+    SSOCKET* ssocket;
+    bool closed;
+};
+
 ObjString* allocateRawString(VM* vm, int length);
 ObjString* allocateString(VM* vm, const char* chars, int length);
 ObjString* strConcat(VM* vm, Value val1, Value val2);
@@ -219,6 +234,7 @@ ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
 ObjTable* allocateTable(VM* vm);
 ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle);
 ObjWebSocket* allocateWebSocket(VM* vm, int sockfd);
+ObjWebSSocket* allocateWebSSocket(VM* vm, SSOCKET* ssocket);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 
