@@ -50,37 +50,29 @@ SOCKET _newSocket(VM* vm, const char* host, int port) {
 } 
 
 int _readSocket(VM* vm, SOCKET sockfd, char** string) {
-    int alloc = 4096;
-    char response[alloc];
-    int bytesRead = 0;
+    int max = 10000;
+    char response[max + 1];
     int currentRead = 0;
 
-    do {
-        currentRead = read(sockfd, response + bytesRead, alloc - bytesRead);
+
+    currentRead = read(sockfd, response, max);
         
-        if (currentRead == -1) {
-            /* An error occured */ 
-            return -1;
-        }
+    if (currentRead == -1) {
+        /* An error occured */ 
+        return -1;
+    }
 
-        if (currentRead == 0) {
-            break;    
-        }
-
-        bytesRead += currentRead;
-    } while (bytesRead < alloc);
-
-    if (bytesRead == alloc) {
-        /* max response limit reached */ 
-        return -2;
-    } else if (bytesRead == 0) {
-        /* We couldnt read anything */ 
+    if (currentRead == 0) {
         return 0;
     }
     
     /* We read something */
-    *string = strdup(response);
-    return bytesRead;
+    char* chars = (char*)reallocate(vm, NULL, 0, sizeof(char) * currentRead + 1);
+    strcpy(chars, response);
+    chars[currentRead] = '\0';
+
+    *string = chars;
+    return currentRead;
 }
 
 bool _writeSocket(SOCKET sockfd, char* chars, int length) {
@@ -200,9 +192,6 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
         return true;
     } else if (length == -1) {
         msapi_runtimeError(vm, "An unknown error occured while reading from socket");
-        return false;
-    } else if (length == -2) {
-        msapi_runtimeError(vm, "Max response limit reached [4096 chars]");
         return false;
     }
 

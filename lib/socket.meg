@@ -1,0 +1,52 @@
+// This library handles the low level socket work for sending web requests 
+// and allows and easy interface for sending data over the web 
+
+import "lib/socket.dll"
+import "lib/ssocket.dll"
+
+var ws_newSocket = socket.query("newSocket")
+var ws_closeSocket = socket.query("closeSocket")
+var ws_readSocket = socket.query("readSocket")
+var ws_writeSocket = socket.query("writeSocket")
+
+var wss_newSocket = ssocket.query("newSocket")
+var wss_closeSocket = ssocket.query("closeSocket")
+var wss_readSocket = ssocket.query("readSocket")
+var wss_writeSocket = ssocket.query("writeSocket")
+
+global CONN_MODE = {
+    "WSS" = 0,
+    "WS" =  1
+}
+
+class HTTPResponse:
+    // This class is a container for an http response 
+
+    func _init(statusCode, message, headers, body):
+        self.statusCode = statusCode 
+        self.message = message 
+        self.headers = headers 
+        self.body = body 
+    end 
+end 
+
+global class Socket:
+    func _init(host, port, mode):
+        if type(host) != "string":
+            print("Expected host to be a string")
+            return 
+        end 
+
+        if type(port) != "number":
+            print("Expected port to be a number")
+            return 
+        end 
+
+        if mode == CONN_MODE.WSS:
+              
+
+        self.host = host
+        self.port = port 
+        self.mode = mode 
+    end 
+end 

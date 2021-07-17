@@ -422,7 +422,7 @@ void freeObject(VM* vm, Obj* obj) {
 
             if (!ssocket->closed) {
                 BIO_free_all(ssocket->ssocket->ssl_bio);
-//                 SSL_CTX_free(ssocket->ssocket->ssl_ctx);
+                SSL_CTX_free(ssocket->ssocket->ssl_ctx);
 
                 reallocateArray(ssocket->ssocket, sizeof(SSOCKET), 0);
                 printf("Warning : Unclosed Secure Socket");

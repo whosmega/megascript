@@ -58,7 +58,7 @@ void freeVM(VM* vm);
 InterpretResult interpret(VM* vm, ObjFunction* function);
 void resetStack(VM* vm);
 
-
+char* findFile(VM* vm, char* path); 
 bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn); 
 bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn);

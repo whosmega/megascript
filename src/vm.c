@@ -370,7 +370,7 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
-static char* findFile(VM* vm, char* path) {
+char* findFile(VM* vm, char* path) {
     /* This function searches for the file in all supported ways */ 
    
     if (access(path, F_OK) == -1) {
