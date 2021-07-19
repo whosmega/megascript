@@ -1271,19 +1271,19 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     
     consume(scanner, parser, TOKEN_COLON, "Expected an ':' in if statement");
     
-    beginScope(parser);
-
     bool elseIfFound = false;
     bool elseFound = false;
     unsigned int latestElseIfIndex = 0;
     unsigned int ifIndex = emitJump(parser, OP_JMP_FALSE);
-     
+    beginScope(parser);
+
     while (parser->current.type != TOKEN_EOF &&
           parser->current.type != TOKEN_ELSE && 
           parser->current.type != TOKEN_ELSEIF &&
           parser->current.type != TOKEN_END) {
         statement(scanner, parser);
     }
+    endScope(parser);           // end if scope 
     writeUintArray(&patchIndexes, emitJump(parser, OP_JMP));
 
     if (parser->current.type == TOKEN_EOF) {
@@ -1292,7 +1292,6 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     }
 
 
-    
     while (parser->current.type == TOKEN_ELSEIF) {
         if (!elseIfFound) {
             patch(parser, ifIndex);
@@ -1305,13 +1304,15 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
         expression(scanner, parser);
         consume(scanner, parser, TOKEN_COLON, "Expected an ':' in else-if clause");
         latestElseIfIndex = emitJump(parser, OP_JMP_FALSE);
-
+        
+        beginScope(parser);
         while (parser->current.type != TOKEN_EOF &&
                parser->current.type != TOKEN_ELSEIF &&
                parser->current.type != TOKEN_ELSE &&
                parser->current.type != TOKEN_END) {
             statement(scanner, parser);
         }
+        endScope(parser);
         writeUintArray(&patchIndexes, emitJump(parser, OP_JMP));
 
     }
@@ -1326,12 +1327,13 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
             patch(parser, ifIndex);
         }
         elseFound = true;
-
+        beginScope(parser);
         while (parser->current.type != TOKEN_EOF &&
                parser->current.type != TOKEN_END) {
             
             statement(scanner, parser);
         }
+        endScope(parser);
     }
 
     if (parser->current.type == TOKEN_EOF) {
@@ -1347,7 +1349,6 @@ static void parseIfStatement(Scanner* scanner, Parser* parser) {
     for (int i = 0; i < patchIndexes.count; i++) {
         patch(parser, getUintArray(&patchIndexes, i));
     }
-    endScope(parser);
 
     if (!elseIfFound && !elseFound) {
         /* patch the unpatched OP_JMP_FALSE of the if */

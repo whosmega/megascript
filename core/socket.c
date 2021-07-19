@@ -68,7 +68,7 @@ int _readSocket(VM* vm, SOCKET sockfd, char** string) {
     
     /* We read something */
     char* chars = (char*)reallocate(vm, NULL, 0, sizeof(char) * currentRead + 1);
-    strcpy(chars, response);
+    memcpy(chars, response, currentRead);
     chars[currentRead] = '\0';
 
     *string = chars;

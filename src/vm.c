@@ -73,7 +73,9 @@ static void injectArrayMethods(VM* vm) {
 static void injectStringMethods(VM* vm) {
     ObjString* captureString = allocateString(vm, "capture", 7);
     ObjString* getAsciiString = allocateString(vm, "getAscii", 8);
+    ObjString* splitString = allocateString(vm, "split", 5);
 
+    insertPtrTable(&vm->stringMethods, splitString, &msmethod_string_split);
     insertPtrTable(&vm->stringMethods, getAsciiString, &msmethod_string_getAscii);
     insertPtrTable(&vm->stringMethods, captureString, &msmethod_string_capture);
 }
@@ -657,6 +659,52 @@ bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn
     return true;
 }
 
+bool msmethod_string_split(VM* vm, Obj* self, int argCount, bool shouldReturn) {
+    if (argCount < 1) {
+        msapi_runtimeError(vm, "Too less arguments, expected 1, got 0");
+        return false;
+    }
+
+    Value string = msapi_getArg(vm, 1, argCount);
+    ObjString* selfString = (ObjString*)self;
+    
+    if (!CHECK_STRING(string)) {
+        msapi_runtimeError(vm, "Expected a string");
+        return false;
+    }
+
+    char* delimeter = AS_STRING(string)->allocated;
+    char* mainString = selfString->allocated;
+    char* token = strstr(mainString, delimeter);
+    int delLen = strlen(delimeter);
+    char* right = NULL;
+
+    ObjArray* array = allocateArray(vm);
+    
+    while (token != NULL) {
+        int length = (int)(token - mainString);
+        ObjString* string = allocateString(vm, mainString, length);
+        right = token + delLen;
+        writeValueArray(&array->array, OBJ(string));
+
+        token = strstr(right, delimeter);
+        mainString = right;
+    }
+
+    if (right != NULL) {
+        ObjString* rightString = allocateString(vm, right, strlen(right));
+        writeValueArray(&array->array, OBJ(rightString));
+    }
+
+    msapi_popn(vm, argCount + 1);
+
+    if (shouldReturn) {
+        msapi_push(vm, OBJ(array));
+    }
+
+    return true;
+}
+
 bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 2) {
         msapi_runtimeError(vm, "Insufficient argument count");
@@ -689,7 +737,7 @@ bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn)
         return false;
     }
 
-    if (arg2 >= string->length || arg2 < 0) {
+    if (arg2 >= string->length + 1 || arg2 < 0) {
         msapi_runtimeError(vm, "Argument 'end' out of range");
         return false;
     }
@@ -702,7 +750,7 @@ bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn)
     popn(vm, argCount + 1);
     
     if (shouldReturn) {
-        push(vm, OBJ(allocateString(vm, &string->allocated[(int)arg1], arg2 - arg1 + 1)));
+        push(vm, OBJ(allocateString(vm, &string->allocated[(int)arg1], arg2 - arg1)));
     }
     return true;
 }
@@ -1055,6 +1103,95 @@ static InterpretResult run(VM* vm) {
             case OP_ASSIGN_UPVALUE: {
                 uint8_t index = READ_BYTE(frame);
                 *frame->closure->upvalues[index]->value = pop(vm);
+                break;
+            }
+            case OP_PLUS_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                Value increment = pop(vm);
+                Value oldValue = *frame->closure->upvalues[index]->value;
+
+                if (CHECK_NUMBER(oldValue) && CHECK_NUMBER(increment)) {
+                    /* Number increment */ 
+                    *frame->closure->upvalues[index]->value = NATIVE_TO_NUMBER(
+                        AS_NUMBER(oldValue) + AS_NUMBER(increment)
+                    );
+                } else if (CHECK_STRING(oldValue) && CHECK_STRING(increment)) {
+                    /* String increment */ 
+                    *frame->closure->upvalues[index]->value = OBJ(
+                        strConcat(vm, oldValue, increment)
+                    );
+                } else {
+                    msapi_runtimeError(vm, "Error : Can only use '+=' on string on number pairs");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
+            case OP_MINUS_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                Value increment = pop(vm);
+                Value oldValue = *frame->closure->upvalues[index]->value;
+
+                if (!(CHECK_NUMBER(oldValue) && CHECK_NUMBER(increment))) {
+                    msapi_runtimeError(vm, "Error : Can only use '-=' on number pairs");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                *frame->closure->upvalues[index]->value = NATIVE_TO_NUMBER(
+                    AS_NUMBER(oldValue) - AS_NUMBER(increment)
+                );
+                break;
+            }
+            case OP_MUL_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                Value increment = pop(vm);
+                Value oldValue = *frame->closure->upvalues[index]->value;
+
+                if (!(CHECK_NUMBER(oldValue) && CHECK_NUMBER(increment))) {
+                    msapi_runtimeError(vm, "Error : Can only use '*=' on number pairs");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                *frame->closure->upvalues[index]->value = NATIVE_TO_NUMBER(
+                    AS_NUMBER(oldValue) * AS_NUMBER(increment)
+                );
+ 
+                break;
+            }
+            case OP_DIV_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                Value increment = pop(vm);
+                Value oldValue = *frame->closure->upvalues[index]->value;
+
+                if (!(CHECK_NUMBER(oldValue) && CHECK_NUMBER(increment))) {
+                    msapi_runtimeError(vm, "Error : Can only use '/=' on number pairs");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                if (AS_NUMBER(increment) == 0) {
+                    msapi_runtimeError(vm, "Cannot divide by 0");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                *frame->closure->upvalues[index]->value = NATIVE_TO_NUMBER(
+                    AS_NUMBER(oldValue) / AS_NUMBER(increment)
+                );
+ 
+                break;
+            }
+            case OP_POW_ASSIGN_UPVALUE: {
+                uint8_t index = READ_BYTE(frame);
+                Value increment = pop(vm);
+                Value oldValue = *frame->closure->upvalues[index]->value;
+
+                if (!(CHECK_NUMBER(oldValue) && CHECK_NUMBER(increment))) {
+                    msapi_runtimeError(vm, "Error : Can only use '^=' on number pairs");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                *frame->closure->upvalues[index]->value = NATIVE_TO_NUMBER(
+                    pow(AS_NUMBER(oldValue), AS_NUMBER(increment))
+                );
+ 
                 break;
             }
             case OP_ITERATE: {

@@ -26,10 +26,10 @@ int _readSocket(VM* vm, SSOCKET* ssocket, char** bufferPtr) {
     } else if (result == 0) {
         return 0;
     }
-
+    
     char* string = (char*)reallocate(vm, NULL, 0, sizeof(char) * result + 1);
     string[result] = '\0';
-    strcpy(string, response);
+    memcpy(string, response, result);
     *bufferPtr = string;
     return result; 
 }
@@ -231,7 +231,6 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
         msapi_push(vm, NIL());
         return true;
     }
-
     ObjString* string = allocateString(vm, chars, length);
     reallocate(vm, chars, sizeof(char) * length + 1, 0);
     msapi_popn(vm, argCount + 1);

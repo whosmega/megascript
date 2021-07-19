@@ -32,7 +32,6 @@ class Lexer:
         self.i = 0
         while self.i < #self.string:
             var char = self.string[self.i]
-
             if char == '{':
                 self.lexemeToken("{", "TOKEN_CURLY_OPEN")
             elseif char == '}':
@@ -71,7 +70,7 @@ class Lexer:
     
     func scanString():
         self.i = self.i + 1     // the '"' 
-        var stringStart = self.i
+        var stringStart = self.i 
         while self.i < #self.string - 1 and self.string[self.i] != "\"":
             self.i = self.i + 1
         end
@@ -81,12 +80,7 @@ class Lexer:
             return false
         end
         
-        var stringEnd = self.i - 1
-        if stringStart > stringEnd:
-            self.lexemeToken("", "TOKEN_STRING")
-        else:
-            self.lexemeToken(self.string.capture(stringStart, stringEnd), "TOKEN_STRING")
-        end
+        self.lexemeToken(self.string.capture(stringStart, self.i), "TOKEN_STRING")
 
         return true 
     end
@@ -112,12 +106,7 @@ class Lexer:
             end 
         end 
         
-        var numberEnd = self.i - 1
-        if numberEnd < numberStart:
-            numberEnd += 1 
-        end 
-        
-        self.lexemeToken(self.string.capture(numberStart, numberEnd), "TOKEN_NUMBER")
+        self.lexemeToken(self.string.capture(numberStart, self.i), "TOKEN_NUMBER")
         self.i = self.i - 1             // undo the last character consumption by the while loop
         return true 
     end
@@ -126,16 +115,24 @@ class Lexer:
         var start = self.i
         var remaining = #self.string - 1 - self.i 
         
-        if remaining >= 4 and self.string.capture(start, start + 4) == "false":
-            self.i = self.i + 4 
-            self.lexemeToken(self.string.capture(start, start + 4), "TOKEN_FALSE")
-        elseif remaining >= 3 and self.string.capture(start, start + 3) == "true":
-            self.lexemeToken(self.string.capture(start, start + 3), "TOKEN_TRUE")
-            self.i = self.i + 3 
-        elseif remaining >= 3 and self.string.capture(start, start + 3) == "null":
-            self.lexemeToken(self.string.capture(start, start + 3), "TOKEN_NULL")
-            self.i = self.i + 3 
-        end  
+        func checkDo(thing, tok):
+            if remaining >= #thing and self.string.capture(start, start + #thing) == thing:
+                self.i = self.i + #thing - 1 
+                self.lexemeToken(thing, tok)
+                return true 
+            end
+            return false 
+        end 
+    
+        if checkDo("false", "TOKEN_FALSE"):
+            return true 
+        elseif checkDo("true", "TOKEN_TRUE"):
+            return true 
+        elseif checkDo("null", "TOKEN_NULL"):
+            return true 
+        end 
+        
+        return false
     end 
             
 

@@ -1,22 +1,11 @@
 // This library handles the low level socket work for sending web requests 
 // and allows and easy interface for sending data over the web 
 
-import "lib/socket.dll"
-import "lib/ssocket.dll"
+import "lib/json.meg"
 
-var ws_newSocket = socket.query("newSocket")
-var ws_closeSocket = socket.query("closeSocket")
-var ws_readSocket = socket.query("readSocket")
-var ws_writeSocket = socket.query("writeSocket")
-
-var wss_newSocket = ssocket.query("newSocket")
-var wss_closeSocket = ssocket.query("closeSocket")
-var wss_readSocket = ssocket.query("readSocket")
-var wss_writeSocket = ssocket.query("writeSocket")
-
-global CONN_MODE = {
+var CONN_MODE = {
     "WSS" = 0,
-    "WS" =  1
+    "WS" = 1
 }
 
 class HTTPResponse:
@@ -28,25 +17,222 @@ class HTTPResponse:
         self.headers = headers 
         self.body = body 
     end 
+
+    func print():
+        print("Status Code :", self.statusCode)
+        print("Message : ", self.message)
+        print("Headers : ", self.headers)
+        print("Body :", self.body)
+    end 
 end 
 
 global class Socket:
-    func _init(host, port, mode):
-        if type(host) != "string":
-            print("Expected host to be a string")
+    ready = false 
+
+    func _init(host, port):
+        var sp = host.split("://")
+    
+        if #sp < 2:
+            print("Expected Socket Type")
             return 
-        end 
+        end
 
-        if type(port) != "number":
-            print("Expected port to be a number")
-            return 
-        end 
-
-        if mode == CONN_MODE.WSS:
-              
-
-        self.host = host
+        var s 
+        if sp[0] == "wss":
+            import "lib/ssocket.dll"
+            s  = ssocket
+        elseif sp[0] == "ws":
+            import "lib/socket.dll"
+            s = socket
+        end
+        
+        self.s = s
+        self.lib = {}
+        self.lib.newSocket = s.query("newSocket")
+        self.lib.closeSocket = s.query("closeSocket")
+        self.lib.readSocket = s.query("readSocket")
+        self.lib.writeSocket = s.query("writeSocket")
+        
+        self._socket = self.lib.newSocket(sp[1], port)
+        
+        self.host = sp[1]
         self.port = port 
-        self.mode = mode 
+        self.ready = true
+    end
+
+    func close():
+        if !self.ready: return end 
+
+        self.ready = false 
+        self.lib.closeSocket(self._socket) 
+        self.s.close()
+        self._socket = nil
+        return true 
     end 
-end 
+
+    func send(data):
+        if !self.ready: return end 
+        self.lib.writeSocket(self._socket, data)
+
+        return true 
+    end
+
+    func recv():
+        if !self.ready: return end
+        var readFunction = self.lib.readSocket 
+        
+        var read 
+        
+        while true:
+            var r = readFunction(self._socket)
+            if !r:
+                return read 
+            end
+
+            if !read: read = "" end
+            read += r
+        end 
+    end 
+
+    func parseResponse(response):
+        if !self.ready: return end 
+        var wholeSplitted = response.split("\r\n\r\n")
+        var body 
+        if #wholeSplitted < 2:
+            body = ""
+            
+        else:
+            body = wholeSplitted[1]
+        end 
+
+        var splitted = wholeSplitted[0].split("\r\n")
+    
+        var message = ""
+        var statusCode = -1 
+        var headers = {}
+
+        if #splitted < 1:
+            print("Expected Message in response")
+            return 
+        end
+
+        // first part the message 
+        var messageSplitted = splitted[0].split(" ")
+        if #messageSplitted < 3:
+            print("Wrong message format")
+            return 
+        end 
+
+        statusCode = num(messageSplitted[1])
+        if statusCode == nil:
+            print("Invalid Status code")
+            return 
+        end
+        message = messageSplitted[2]
+
+        for i in 3, #messageSplitted - 1:
+            message += " " + messageSplitted[i]
+        end 
+        
+        for i in 1, #splitted - 1:
+            var header = splitted[i]
+            var headerSplitted = header.split(": ")
+            
+            if #headerSplitted < 1:
+                print("Invalid Header Format")
+                return 
+            end 
+
+            var key = headerSplitted[0] 
+            var value = ""
+
+            for i in 1, #headerSplitted - 1:
+                value += headerSplitted[i]
+            end
+
+            headers[key] = value 
+        end
+
+        return HTTPResponse(statusCode, message, headers, body)
+    end
+
+    func get(endpoint, headers):
+        if !self.ready: return end 
+        if type(endpoint) != "string":
+            print("Endpoint should be a string")
+            return 
+        end 
+        
+        if type(headers) != "table":
+            print("Headers should be a table")
+            return 
+        end 
+
+        if !headers.Host:
+            headers.Host = self.host
+        end 
+
+        var message = "GET " + endpoint + " HTTP/1.0\r\n"
+
+        for _, key in headers.keys():
+            var value = headers[key]
+
+            message += key 
+            message += ": "
+            message += str(value)
+            message += "\r\n"
+        end
+
+        message += "\r\n"
+        if !self.send(message): return end 
+        var res = self.recv()
+        if !res: return end 
+        return self.parseResponse(res)
+    end
+
+    func post(endpoint, headers, body):
+        if !self.ready: return end 
+
+        if type(endpoint) != "string":
+            print("Endpoint is expected to be a string")
+            return 
+        end 
+
+        if type(headers) != "table":
+            print("Headers are expected to be a string")
+            return 
+        end 
+
+        if type(body) != "string":
+            print("Body is expected to be a string")
+            return 
+        end 
+
+        if !headers["Content-Type"]:
+            headers["Content-Type"] = "text/plain"
+        end 
+
+        if !headers["Content-Length"]:
+            headers["Content-Length"] = #body
+        end 
+
+        var message = "POST " + endpoint + " HTTP/1.0\r\n"
+
+        for _, key in headers.keys():
+            var value = headers[key] 
+
+            message += key
+            message += ": "
+            message += str(value)
+            message += "\r\n"
+        end 
+
+        message += "\r\n"
+        message += body
+
+        if !self.send(message): return end 
+        var res = self.recv()
+        if !res: return end 
+        return self.parseResponse(res) 
+    end 
+end

@@ -61,6 +61,7 @@ void resetStack(VM* vm);
 char* findFile(VM* vm, char* path); 
 bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn); 
 bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn);
+bool msmethod_string_split(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_string_getAscii(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_table_keys(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_dll_close(VM* vm, Obj* self, int argCount, bool shouldReturn);
