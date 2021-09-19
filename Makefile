@@ -5,13 +5,15 @@ ifeq ($(OS),Windows_NT)     # is Windows_NT on XP, 2000, 7, Vista, 10...
 EXE = mega.exe
 RM = del
 MV = move
-CLIBS = -lm 
+CLIBS = -lm
+DLLEXT = dll
 DYNAMIC_FLG = 
 else
 EXE = mega
 RM = rm
 MV = mv
 CLIBS = -lm -ldl -lssl -lcrypto
+DLLEXT = so
 DYNAMIC_FLG = -export-dynamic
 endif
 
@@ -19,16 +21,17 @@ BIN =  chunk.o debug.o globals.o memory.o \
 	   scanner.o value.o compiler.o gcollect.o \
 	   main.o object.o table.o vm.o \
 	    
-LIB_BIN = socket.o ssocket.o 
+LIB_BIN = _socket.o _ssocket.o _coroutine.o
 
-DLLS = socket.dll ssocket.dll 
+DLLS = _socket.$(DLLEXT) _ssocket.$(DLLEXT) _coroutine.$(DLLEXT)
 
 $(EXE) $(DLLS): $(BIN) $(LIB_BIN)
 	$(CC) $(CLIBS) $(CFLAGS) $(DYNAMIC_FLG) $(BIN) -o $(EXE)
-	$(CC) $(CFLAGS) -shared socket.o -o socket.dll 
-	$(CC) $(CFLAGS) -shared -lssl -lcrypto ssocket.o -o ssocket.dll 
+	$(CC) $(CFLAGS) -shared _socket.o -o _socket.$(DLLEXT) 
+	$(CC) $(CFLAGS) -shared -lssl -lcrypto _ssocket.o -o _ssocket.$(DLLEXT)
+	$(CC) $(CFLAGS) -shared _coroutine.o -o _coroutine.$(DLLEXT)
 	$(MV) *.o bin
-	$(MV) *.dll lib
+	$(MV) *.$(DLLEXT) lib
 
 chunk.o : includes/chunk.h includes/memory.h includes/value.h \
 		  src/chunk.c
@@ -86,14 +89,18 @@ vm.o : includes/vm.h includes/chunk.h includes/common.h includes/debug.h \
 
 # libraries 
 
-socket.o : includes/vm.h includes/memory.h includes/msapi.h \
-	core/socket.c 
-	$(CC) $(CFLAGS) -fpic -c core/socket.c 
+_socket.o : includes/vm.h includes/memory.h includes/msapi.h \
+	core/_socket.c 
+	$(CC) $(CFLAGS) -fpic -c core/_socket.c 
 
-ssocket.o : includes/msapi.h includes/memory.h includes/lib_ssocket.h \
-	core/ssocket.c 
-	$(CC) $(CFLAGS) -fpic -c core/ssocket.c 
+_ssocket.o : includes/msapi.h includes/memory.h includes/lib_ssocket.h \
+	core/_ssocket.c 
+	$(CC) $(CFLAGS) -fpic -c core/_ssocket.c 
+
+_coroutine.o : includes/msapi.h includes/object.h \
+	core/_coroutine.c
+	$(CC) $(CFLAGS) -fpic -c core/_coroutine.c
 
 clean:
 	$(RM) bin/*.o
-	$(RM) lib/*.dll
+	$(RM) lib/*.$(DLLEXT)

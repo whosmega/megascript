@@ -58,8 +58,8 @@ class Lexer:
             elseif char == "\t":
             elseif char == " ":
             else:
-                print("Unknown character : " + char)
-                return false
+                print("Unknown Character : " + char)
+                return
             end
             self.i = self.i + 1 
         end 
@@ -71,7 +71,28 @@ class Lexer:
     func scanString():
         self.i = self.i + 1     // the '"' 
         var stringStart = self.i 
+        var string = ""
         while self.i < #self.string - 1 and self.string[self.i] != "\"":
+            if self.string[self.i] == "\\":
+                if self.i == #self.string - 1:
+                    print("Invalid Escape Sequence")
+                    return false 
+                end 
+            
+                if self.string[self.i + 1] == "\"":
+                    // escape string
+                    string += "\""
+                elseif self.string[self.i + 1] == "\\":
+                    string += "\\"
+                else:
+                    print("Unknown Escape Sequence")
+                    return false
+                end
+
+                self.i = self.i + 1
+            else:
+                string += self.string[self.i]
+            end
             self.i = self.i + 1
         end
 
@@ -80,7 +101,7 @@ class Lexer:
             return false
         end
         
-        self.lexemeToken(self.string.capture(stringStart, self.i), "TOKEN_STRING")
+        self.lexemeToken(string, "TOKEN_STRING")
 
         return true 
     end
@@ -406,3 +427,4 @@ global func stringify(object):
     if !string: return false end 
     return string 
 end
+

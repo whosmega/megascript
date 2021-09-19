@@ -138,6 +138,14 @@ int dissembleInstruction(Chunk* chunk, int offset) {
     switch(instruction) {
         case OP_RETEOF:
             return simpleInstruction("RETEOF", offset);
+        case OP_BIT_OR:
+            return simpleInstruction("BIT_OR", offset);
+        case OP_BIT_AND:
+            return simpleInstruction("BIT_AND", offset);
+        case OP_SHIFTL:
+            return simpleInstruction("SHIFTL", offset);
+        case OP_SHIFTR:
+            return simpleInstruction("SHIFTR", offset);
         case OP_RETFILE:
             return simpleInstruction("RETFILE", offset);
         case OP_IMPORT:

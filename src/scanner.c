@@ -119,10 +119,14 @@ static bool isAlphaNumeric(char c) {
 }
 
 static Token scanString(Scanner* scanner, char type) {
+    bool lastWasSlash = false;
     while (!isAtEnd(scanner)) {
         if (peek(scanner) == type) break;
         if (peek(scanner) == '\\') {
-            if (peekNext(scanner) == type) advance(scanner);
+            if (peekNext(scanner) == type && !lastWasSlash) advance(scanner);
+            lastWasSlash = true;
+        } else {
+            lastWasSlash = false;
         }
         if (peek(scanner) == '\n') scanner->line++;
         advance(scanner);
@@ -252,6 +256,8 @@ Token scanToken(Scanner* scanner) {
         case ';': return makeToken(scanner, TOKEN_SEMICOLON);
         case ',': return makeToken(scanner, TOKEN_COMMA);
         case '#': return makeToken(scanner, TOKEN_HASH);
+        case '&': return makeToken(scanner, TOKEN_BIT_AND);
+        case '|': return makeToken(scanner, TOKEN_BIT_OR);
         case '!': return makeToken(scanner, 
             match(scanner, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG
         );
@@ -280,10 +286,12 @@ Token scanToken(Scanner* scanner) {
             match(scanner, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL
         );
         case '>': return makeToken(scanner,
-            match(scanner, '=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER
+            match(scanner, '=') ? TOKEN_GREATER_EQUAL : 
+            match(scanner, '>') ? TOKEN_SHIFTR : TOKEN_GREATER
         );
         case '<': return makeToken(scanner, 
-            match(scanner, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS
+            match(scanner, '=') ? TOKEN_LESS_EQUAL : 
+            match(scanner, '<') ? TOKEN_SHIFTL : TOKEN_LESS
         );
         case ':': {
             if (match(scanner, '=')) {
@@ -297,6 +305,6 @@ Token scanToken(Scanner* scanner) {
             }
         }
     }
-
+    
     return makeError(scanner, "Unexpected Character");
 }

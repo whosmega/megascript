@@ -150,12 +150,13 @@ ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr
     return native;
 }
 
-ObjClosure* allocateClosure(VM* vm, ObjFunction* function) {
+ObjClosure* allocateClosure(VM* vm, ObjFunction* function, ObjTable* env) {
     ObjUpvalue** upvalues = ALLOCATE(vm, ObjUpvalue*, function->upvalueCount);
     ObjClosure* closure = (ObjClosure*)allocateObject(vm, sizeof(ObjClosure), OBJ_CLOSURE);
     closure->function = function;
     closure->upvalues = upvalues;
     closure->upvalueCount = function->upvalueCount;
+    closure->env = vm->globals;
 
     for (int i = 0; i < closure->upvalueCount; i++) {
         closure->upvalues[i] = NULL;
@@ -225,9 +226,9 @@ ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle)
     return object;
 }
 
-ObjWebSocket* allocateWebSocket(VM* vm, int sockfd) {
-    ObjWebSocket* socket = (ObjWebSocket*)allocateObject(vm,
-            sizeof(ObjWebSocket), OBJ_WEB_SOCKET);
+ObjSocket* allocateSocket(VM* vm, int sockfd) {
+    ObjSocket* socket = (ObjSocket*)allocateObject(vm,
+            sizeof(ObjSocket), OBJ_SOCKET);
 
     socket->sockfd = sockfd;
     socket->closed = false;
@@ -235,14 +236,29 @@ ObjWebSocket* allocateWebSocket(VM* vm, int sockfd) {
     return socket;
 }
 
-ObjWebSSocket* allocateWebSSocket(VM* vm, SSOCKET* ssocket) {
-    ObjWebSSocket* sock = (ObjWebSSocket*)allocateObject(vm,
-            sizeof(ObjWebSSocket), OBJ_WEB_SSOCKET);
+ObjSSocket* allocateSSocket(VM* vm, SSOCKET* ssocket) {
+    ObjSSocket* sock = (ObjSSocket*)allocateObject(vm,
+            sizeof(ObjSSocket), OBJ_SSOCKET);
 
     sock->ssocket = ssocket;
     sock->closed = false;
 
     return sock;
+}
+
+ObjCoroutine* allocateCoroutine(VM* vm, ObjClosure* closure) {
+    ObjCoroutine* coro = (ObjCoroutine*)allocateObject(vm,
+            sizeof(ObjCoroutine), OBJ_COROUTINE);
+
+    coro->closure = closure;
+    coro->state = CORO_YIELDING;
+    coro->frames = NULL;
+    coro->stack = NULL;
+    coro->frameCount = 0;
+    coro->stackSize = 0;
+    coro->shouldReturn = false;
+
+    return coro;
 }
 
 void printObject(Value value) {
@@ -313,11 +329,14 @@ void printObject(Value value) {
         case OBJ_DLL_CONTAINER:
             printf("Dll Object <%s>", AS_DLL_CONTAINER(value)->fileName->allocated);
             break;
-        case OBJ_WEB_SOCKET:
-            printf("Web Socket <%d>", AS_WEB_SOCKET(value)->sockfd);
+        case OBJ_SOCKET:
+            printf("Socket <%d>", AS_SOCKET(value)->sockfd);
             break;
-        case OBJ_WEB_SSOCKET:
-            printf("Secure Web Socket <>");
+        case OBJ_SSOCKET:
+            printf("Secure Socket <>");
+            break;
+        case OBJ_COROUTINE:
+            printf("Coroutine");
             break;
         default: return;
     }
@@ -400,25 +419,25 @@ void freeObject(VM* vm, Obj* obj) {
 
             if (!container->closed) {
                 dlclose(container->handle);
-
-                printf("Warning : Unclosed DLL '%s'\n", container->fileName->allocated);
             }
+
             reallocate(vm, container, sizeof(ObjDllContainer), 0);
             break;
         }
-        case OBJ_WEB_SOCKET: {
-            ObjWebSocket* socket = (ObjWebSocket*)obj; 
+        case OBJ_SOCKET: {
+            ObjSocket* socket = (ObjSocket*)obj; 
 
             if (!socket->closed) {
                 close(socket->sockfd);
 
                 printf("Warning : Unclosed Socket '%d'\n", socket->sockfd);
             }
-            reallocate(vm, socket, sizeof(ObjWebSocket), 0);
+            reallocate(vm, socket, sizeof(ObjSocket), 0);
             break;
         }
-        case OBJ_WEB_SSOCKET: {
-            ObjWebSSocket* ssocket = (ObjWebSSocket*)obj;
+        case OBJ_SSOCKET: {
+            ObjSSocket* ssocket = (ObjSSocket*)obj;
+
 
             if (!ssocket->closed) {
                 BIO_free_all(ssocket->ssocket->ssl_bio);
@@ -428,7 +447,22 @@ void freeObject(VM* vm, Obj* obj) {
                 printf("Warning : Unclosed Secure Socket");
             }
             
-            reallocate(vm, ssocket, sizeof(ObjWebSSocket), 0);
+            reallocate(vm, ssocket, sizeof(ObjSSocket), 0);
+            break;
+        }
+        case OBJ_COROUTINE: {
+            ObjCoroutine* coro = (ObjCoroutine*)obj;
+            
+            if (coro->frames != NULL) {
+                /* If a previous state was stored, we free the frames */
+                reallocate(vm, coro->frames, sizeof(CallFrame) * coro->frameCount, 0);
+            }
+
+            if (coro->stack != NULL) {
+                reallocate(vm, coro->stack, sizeof(Value) * coro->stackSize, 0);
+            }
+            
+            reallocate(vm, coro, sizeof(ObjCoroutine), 0);
             break;
         }
         default: return;

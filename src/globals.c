@@ -13,6 +13,7 @@ void injectGlobals(VM* vm) {
     ObjString* str_clock = allocateString(vm, "clock", 5);
     ObjString* str_type = allocateString(vm, "type", 4);
     ObjString* str_input = allocateString(vm, "input", 5);
+    ObjString* str_char = allocateString(vm, "char", 4);
 
     ObjNativeFunction* native_print = allocateNativeFunction(vm, str_print, &msglobal_print);
     ObjNativeFunction* native_clock = allocateNativeFunction(vm, str_clock, &msglobal_clock);
@@ -20,13 +21,15 @@ void injectGlobals(VM* vm) {
     ObjNativeFunction* native_num = allocateNativeFunction(vm, str_num, &msglobal_num);
     ObjNativeFunction* native_type = allocateNativeFunction(vm, str_type, &msglobal_type);
     ObjNativeFunction* native_input = allocateNativeFunction(vm, str_input, &msglobal_input);
+    ObjNativeFunction* native_char = allocateNativeFunction(vm, str_char, &msglobal_char);
 
-    insertTable(&vm->globals, str_clock, OBJ(native_clock));
-    insertTable(&vm->globals, str_str, OBJ(native_str));
-    insertTable(&vm->globals, str_num, OBJ(native_num));
-    insertTable(&vm->globals, str_type, OBJ(native_type));
-    insertTable(&vm->globals, str_print, OBJ(native_print));
-    insertTable(&vm->globals, str_input, OBJ(native_input));
+    insertTable(&vm->globals->table, str_clock, OBJ(native_clock));
+    insertTable(&vm->globals->table, str_str, OBJ(native_str));
+    insertTable(&vm->globals->table, str_num, OBJ(native_num));
+    insertTable(&vm->globals->table, str_type, OBJ(native_type));
+    insertTable(&vm->globals->table, str_print, OBJ(native_print));
+    insertTable(&vm->globals->table, str_input, OBJ(native_input));
+    insertTable(&vm->globals->table, str_char, OBJ(native_char));
 }
 
 
@@ -123,9 +126,12 @@ bool msglobal_str(VM* vm, int argCount, bool shouldReturn) {
                 case OBJ_DLL_CONTAINER:
                     msapi_push(vm, OBJ(AS_DLL_CONTAINER(thing)->fileName));
                     break;
-                case OBJ_WEB_SSOCKET:
-                case OBJ_WEB_SOCKET:
+                case OBJ_SSOCKET:
+                case OBJ_SOCKET:
                     msapi_push(vm, OBJ(allocateString(vm, "socket", 6)));
+                    break;
+                case OBJ_COROUTINE:
+                    msapi_push(vm, OBJ(AS_COROUTINE(thing)->closure->function->name));
                     break;
                 default: msapi_push(vm, NIL()); break;
             }
@@ -136,6 +142,36 @@ bool msglobal_str(VM* vm, int argCount, bool shouldReturn) {
 
     return true;
 
+}
+
+bool msglobal_char(VM* vm, int argCount, bool shouldReturn) {
+    if (argCount == 0) {
+        msapi_runtimeError(vm, "Expected an argument in the 'char()' function");
+        return false;
+    }
+
+    Value val = msapi_getArg(vm, 1, argCount);
+
+    if (!CHECK_NUMBER(val)) {
+        msapi_runtimeError(vm, "Expected an ascii numeric code");
+        return false;
+    }
+
+    double number = AS_NUMBER(val);
+
+    if ((number >= 0 && number <= 255) || (number >= -128 && number <= 128)) {
+        char chars[2];
+        chars[0] = (char)number;
+        chars[1] = '\0';
+        ObjString* character = allocateString(vm, chars, 1);
+        msapi_popn(vm, argCount + 1);
+        msapi_push(vm, OBJ(character));
+    } else {
+        msapi_runtimeError(vm, "Number out of ASCII Range");
+        return false;
+    }
+
+    return true;
 }
 
 bool msglobal_num(VM* vm, int argCount, bool shouldReturn) {
@@ -247,12 +283,13 @@ bool msglobal_type(VM *vm, int argCount, bool shouldReturn) {
                 case OBJ_CLOSURE:
                 case OBJ_METHOD:
                 case OBJ_NATIVE_METHOD:
+                case OBJ_COROUTINE:
                 case OBJ_DLL_CONTAINER: {
                     msapi_push(vm, OBJ(allocateString(vm, "function", 8)));
                     break;
                 }
-                case OBJ_WEB_SSOCKET:
-                case OBJ_WEB_SOCKET: {
+                case OBJ_SSOCKET:
+                case OBJ_SOCKET: {
                     msapi_push(vm, OBJ(allocateString(vm, "socket", 6)));
                     break;
                 }

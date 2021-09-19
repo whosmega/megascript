@@ -10,6 +10,12 @@
 typedef bool (*NativeFuncPtr)(VM*, int, bool);
 typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 
+typedef enum {
+    CORO_RUNNING,
+    CORO_YIELDING,
+    CORO_DEAD
+} CoroutineState;
+
 #define CHECK_STRING(val) \
     (isObjType(val, OBJ_STRING))
 
@@ -46,11 +52,14 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 #define CHECK_DLL_CONTAINER(val) \
     (isObjType(val, OBJ_DLL_CONTAINER))
 
-#define CHECK_WEB_SOCKET(val) \
-    (isObjType(val, OBJ_WEB_SOCKET))
+#define CHECK_SOCKET(val) \
+    (isObjType(val, OBJ_SOCKET))
 
-#define CHECK_WEB_SSOCKET(val) \
-    (isObjType(val, OBJ_WEB_SSOCKET))
+#define CHECK_SSOCKET(val) \
+    (isObjType(val, OBJ_SSOCKET))
+
+#define CHECK_COROUTINE(val) \
+    (isObjType(val, OBJ_COROUTINE))
 
 #define AS_STRING(val) \
     ((ObjString*)AS_OBJ(val))
@@ -94,11 +103,14 @@ typedef bool (*NativeMethodPtr)(VM*, Obj*, int, bool);
 #define AS_DLL_CONTAINER(val) \
     ((ObjDllContainer*)AS_OBJ(val))
 
-#define AS_WEB_SOCKET(val) \
-    ((ObjWebSocket*)AS_OBJ(val))
+#define AS_SOCKET(val) \
+    ((ObjSocket*)AS_OBJ(val))
 
-#define AS_WEB_SSOCKET(val) \
-    ((ObjWebSSocket*)AS_OBJ(val))
+#define AS_SSOCKET(val) \
+    ((ObjSSocket*)AS_OBJ(val))
+
+#define AS_COROUTINE(val) \
+    ((ObjCoroutine*)AS_OBJ(val))
 
 #define OBJ_HEAD Obj obj
 
@@ -115,8 +127,9 @@ typedef enum {
     OBJ_TABLE,
     OBJ_NATIVE_METHOD,
     OBJ_DLL_CONTAINER,
-    OBJ_WEB_SOCKET,
-    OBJ_WEB_SSOCKET
+    OBJ_SOCKET,
+    OBJ_SSOCKET,
+    OBJ_COROUTINE
 } ObjType;
 
 struct Obj {                /* Typedef defined in value.h */
@@ -156,6 +169,7 @@ struct ObjFunction {
 struct ObjClosure {
     OBJ_HEAD;
     ObjFunction* function;
+    ObjTable* env;                  /* The global environment locked to this function */
     int upvalueCount;
     ObjUpvalue** upvalues;
 };
@@ -185,6 +199,7 @@ struct ObjMethod {
     ObjClosure* closure;
 };
 
+
 struct ObjTable {
     OBJ_HEAD;
     Table table;
@@ -204,16 +219,28 @@ struct ObjDllContainer {
     void* handle;
 };
 
-struct ObjWebSocket {
+struct ObjSocket {
     OBJ_HEAD;
     int sockfd;
     bool closed;
 };
 
-struct ObjWebSSocket {
+struct ObjSSocket {
     OBJ_HEAD;
     SSOCKET* ssocket;
     bool closed;
+};
+
+struct ObjCoroutine {
+    OBJ_HEAD;
+    ObjClosure* closure;
+    CallFrame* frames;
+    Value* stack;
+    ObjUpvalue* upvalues;
+    uint16_t frameCount;
+    int stackSize;
+    bool shouldReturn;
+    CoroutineState state;
 };
 
 ObjString* allocateRawString(VM* vm, int length);
@@ -225,7 +252,7 @@ ObjFunction* newFunction(VM* vm, const char* name, int arity);
 ObjFunction* newFunctionFromSource(VM* vm, const char* start, int length, int arity);
 ObjArray* allocateArray(VM* vm);
 ObjNativeFunction* allocateNativeFunction(VM* vm, ObjString* name, NativeFuncPtr funcPtr);
-ObjClosure* allocateClosure(VM* vm, ObjFunction* function);
+ObjClosure* allocateClosure(VM* vm, ObjFunction* function, ObjTable* env);
 ObjUpvalue* allocateUpvalue(VM* vm, Value* value);
 ObjClass* allocateClass(VM* vm, ObjString* name);
 ObjInstance* allocateInstance(VM* vm, ObjClass* klass);
@@ -233,8 +260,9 @@ ObjNativeMethod* allocateNativeMethod(VM* vm, ObjString* name, Obj* self, Native
 ObjMethod* allocateMethod(VM* vm, ObjInstance* instance, ObjClosure* closure);
 ObjTable* allocateTable(VM* vm);
 ObjDllContainer* allocateDllContainer(VM* vm, ObjString* fileName, void* handle);
-ObjWebSocket* allocateWebSocket(VM* vm, int sockfd);
-ObjWebSSocket* allocateWebSSocket(VM* vm, SSOCKET* ssocket);
+ObjSocket* allocateSocket(VM* vm, int sockfd);
+ObjSSocket* allocateSSocket(VM* vm, SSOCKET* ssocket);
+ObjCoroutine* allocateCoroutine(VM* vm, ObjClosure* closure);
 
 static inline bool isObjType(Value value, ObjType type) {
     return CHECK_OBJ(value) && AS_OBJ(value)->type == type; 

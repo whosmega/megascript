@@ -112,17 +112,13 @@ void markRoots(VM* vm) {
     }
 
     /* Mark hash tables such as the VMs global environment */ 
-    markTable(vm, &vm->globals);
+    markObject(vm, &vm->globals->obj);
     markPtrTable(vm, &vm->arrayMethods);
     markPtrTable(vm, &vm->stringMethods);
     markPtrTable(vm, &vm->tableMethods);
     markPtrTable(vm, &vm->dllMethods);
 
     markTable(vm, &vm->importCache); 
-    /* Mark global arrays in import stack */ 
-    for (int i = 0; i < vm->importCount; i++) {
-        markTable(vm, &vm->importStack[i]);
-    }
 
     /* Mark the running functions in the call stack */ 
     for (int i = 0; i < vm->frameCount; i++) {
@@ -133,6 +129,14 @@ void markRoots(VM* vm) {
     /* Mark open upvalues */
     for (ObjUpvalue* upvalue = vm->UpvalueHead; upvalue != NULL; upvalue=upvalue->next) {
         markObject(vm, (Obj*)upvalue);
+    }
+
+    /* Mark modules */
+    for (int i = 0; i < vm->moduleCount; i++) {
+        Module mod = vm->modules[i];
+        
+        markObject(vm, &vm->globals->obj);
+        markObject(vm, &mod.moduleName->obj);
     }
 }
 
@@ -155,6 +159,7 @@ void blackenObject(VM* vm, Obj* obj) {
              * been marked and are roots */ 
             ObjClosure* closure = (ObjClosure*)obj;
             markObject(vm, (Obj*)closure->function);
+            markObject(vm, (Obj*)closure->env);
 
             for (int i = 0; i < closure->upvalueCount; i++) {
                 markObject(vm, (Obj*)closure->upvalues[i]);
@@ -205,6 +210,37 @@ void blackenObject(VM* vm, Obj* obj) {
         }
         case OBJ_DLL_CONTAINER: {
             markObject(vm, &((ObjDllContainer*)obj)->fileName->obj);
+            break;
+        }
+        case OBJ_COROUTINE: {
+            ObjCoroutine* coro = (ObjCoroutine*)obj;
+            markObject(vm, &coro->closure->obj);
+            
+            if (coro->frames != NULL) {
+                /* if a frame state is exists for this coroutine, mark the closures
+                 * except the first one, because it has been already marked on top */
+
+                for (int i = 1; i < coro->frameCount; i++) {
+                    markObject(vm, &coro->frames[i].closure->obj);
+                }
+            }
+                
+            /* Mark the fake stack */
+            if (coro->stack != NULL) {
+                for (int i = 0; i < coro->stackSize; i++) {
+                    markValue(vm, coro->stack[i]);
+                }
+            }
+            
+            /* Mark the upvalues which are still open */
+            if (coro->upvalues != NULL) {
+                for (ObjUpvalue* upvalue = coro->upvalues; 
+                        upvalue != NULL; upvalue = upvalue->next) {
+                    
+                    markObject(vm, &upvalue->obj);
+                }
+            }
+
             break;
         }
         default: return;

@@ -1,11 +1,23 @@
 // This library handles the low level socket work for sending web requests 
 // and allows and easy interface for sending data over the web 
 
-import "lib/json.meg"
+import "lib/json"
+import "lib/_socket"
+import "lib/_ssocket"
 
-var CONN_MODE = {
-    "WSS" = 0,
-    "WS" = 1
+var unsecure_newSocket = _socket.query("newSocket")
+var unsecure_closeSocket = _socket.query("closeSocket")
+var unsecure_readSocket = _socket.query("readSocket")
+var unsecure_writeSocket = _socket.query("writeSocket")
+
+var secure_newSocket = _ssocket.query("newSocket")
+var secure_closeSocket = _ssocket.query("closeSocket")
+var secure_readSocket = _ssocket.query("readSocket")
+var secure_writeSocket = _ssocket.query("writeSocket")
+
+global CONN_MODE = {
+    "SECURE" = 0,
+    "UNSECURE" = 1
 }
 
 class HTTPResponse:
@@ -29,33 +41,27 @@ end
 global class Socket:
     ready = false 
 
-    func _init(host, port):
-        var sp = host.split("://")
-    
-        if #sp < 2:
-            print("Expected Socket Type")
-            return 
-        end
-
-        var s 
-        if sp[0] == "wss":
-            import "lib/ssocket.dll"
-            s  = ssocket
-        elseif sp[0] == "ws":
-            import "lib/socket.dll"
-            s = socket
-        end
-        
-        self.s = s
+    func _init(host, port, ctype): 
         self.lib = {}
-        self.lib.newSocket = s.query("newSocket")
-        self.lib.closeSocket = s.query("closeSocket")
-        self.lib.readSocket = s.query("readSocket")
-        self.lib.writeSocket = s.query("writeSocket")
+
+        if ctype == CONN_MODE.SECURE:
+            self.lib.newSocket = secure_newSocket
+            self.lib.closeSocket = secure_closeSocket
+            self.lib.readSocket = secure_readSocket
+            self.lib.writeSocket = secure_writeSocket
+        elseif ctype == CONN_MODE.UNSECURE:
+            self.lib.newSocket = unsecure_newSocket
+            self.lib.closeSocket = unsecure_closeSocket
+            self.lib.readSocket = unsecure_readSocket
+            self.lib.writeSocket = unsecure_writeSocket
+        else:
+            print("Unknown Connection Mode")
+            return
+        end 
         
-        self._socket = self.lib.newSocket(sp[1], port)
-        
-        self.host = sp[1]
+        self._socket = self.lib.newSocket(host, port)
+         
+        self.host = host
         self.port = port 
         self.ready = true
     end
@@ -64,8 +70,7 @@ global class Socket:
         if !self.ready: return end 
 
         self.ready = false 
-        self.lib.closeSocket(self._socket) 
-        self.s.close()
+        self.lib.closeSocket(self._socket)
         self._socket = nil
         return true 
     end 
@@ -85,17 +90,18 @@ global class Socket:
         
         while true:
             var r = readFunction(self._socket)
-            if !r:
-                return read 
+            if #r < 1300 or !r:
+                if !read: return r end 
+                return read
             end
 
             if !read: read = "" end
             read += r
-        end 
+        end
     end 
 
-    func parseResponse(response):
-        if !self.ready: return end 
+    func parseHTTPResponse(response):
+        if !self.ready: return end
         var wholeSplitted = response.split("\r\n\r\n")
         var body 
         if #wholeSplitted < 2:
@@ -164,8 +170,7 @@ global class Socket:
         end 
         
         if type(headers) != "table":
-            print("Headers should be a table")
-            return 
+            headers = {} 
         end 
 
         if !headers.Host:
@@ -184,10 +189,16 @@ global class Socket:
         end
 
         message += "\r\n"
-        if !self.send(message): return end 
+        if !self.send(message): 
+            print("An Error Occured While Sending Data Over Socket")
+            return
+        end
         var res = self.recv()
-        if !res: return end 
-        return self.parseResponse(res)
+        if !res:
+            print("An Error Occured while reading data from socket")
+            return
+        end
+        return self.parseHTTPResponse(res)
     end
 
     func post(endpoint, headers, body):
@@ -233,6 +244,6 @@ global class Socket:
         if !self.send(message): return end 
         var res = self.recv()
         if !res: return end 
-        return self.parseResponse(res) 
+        return self.parseHTTPResponse(res) 
     end 
 end

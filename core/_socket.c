@@ -50,7 +50,7 @@ SOCKET _newSocket(VM* vm, const char* host, int port) {
 } 
 
 int _readSocket(VM* vm, SOCKET sockfd, char** string) {
-    int max = 10000;
+    int max = 1300;
     char response[max + 1];
     int currentRead = 0;
 
@@ -95,7 +95,7 @@ bool _writeSocket(SOCKET sockfd, char* chars, int length) {
     return true;
 }
 
-bool newSocket(VM* vm, int argCount, bool shouldReturn) {
+bool newSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 2) {
         msapi_runtimeError(vm, "Too less arguments, expected 2, got %d", argCount);
         return false;
@@ -121,7 +121,7 @@ bool newSocket(VM* vm, int argCount, bool shouldReturn) {
     }
 
     if (shouldReturn) {
-        ObjWebSocket* socket = allocateWebSocket(vm, sockfd);
+        ObjSocket* socket = allocateSocket(vm, sockfd);
         msapi_popn(vm, argCount + 1);
         msapi_push(vm, OBJ(socket));
     } else {
@@ -131,7 +131,7 @@ bool newSocket(VM* vm, int argCount, bool shouldReturn) {
     return true; 
 }
 
-bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
+bool closeSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 1) {
         msapi_runtimeError(vm, "Too less arguments, expected 1, got 0");
         return false;
@@ -139,12 +139,12 @@ bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value sockfd = msapi_getArg(vm, 1, argCount);
 
-    if (!CHECK_WEB_SOCKET(sockfd)) {
+    if (!CHECK_SOCKET(sockfd)) {
         msapi_runtimeError(vm, "Expected sockfd to be a web socket");
         return false;
     }
     msapi_popn(vm, argCount + 1);
-    ObjWebSocket* socket = AS_WEB_SOCKET(sockfd);
+    ObjSocket* socket = AS_SOCKET(sockfd);
 
     if (socket->closed) {
         printf("Warning : Socket already closed"); 
@@ -159,7 +159,7 @@ bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
     return true;
 }
 
-bool readSocket(VM* vm, int argCount, bool shouldReturn) {
+bool readSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 1) {
         msapi_runtimeError(vm, "Too less arguments, expected 1, got 0");
         return false;
@@ -167,12 +167,12 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value sockfd = msapi_getArg(vm, 1, argCount);
 
-    if (!CHECK_WEB_SOCKET(sockfd)) {
+    if (!CHECK_SOCKET(sockfd)) {
         msapi_runtimeError(vm, "Expected sockfd to be a web socket");
         return false;
     }
 
-    ObjWebSocket* socket = AS_WEB_SOCKET(sockfd);
+    ObjSocket* socket = AS_SOCKET(sockfd);
     if (socket->closed) {
         msapi_runtimeError(vm, "Socket has already been closed");
         return false;
@@ -205,7 +205,7 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
     return true;
 }
 
-bool writeSocket(VM* vm, int argCount, bool shouldReturn) {
+bool writeSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 2) {
         msapi_runtimeError(vm, "Too less arguments, expected 2, got %d", argCount);
         return false;
@@ -213,12 +213,12 @@ bool writeSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value sockfd = msapi_getArg(vm, 1, argCount);
     Value string = msapi_getArg(vm, 2, argCount);
-    if (!CHECK_WEB_SOCKET(sockfd)) {
+    if (!CHECK_SOCKET(sockfd)) {
         msapi_runtimeError(vm, "Expected sockfd to be a web socket");
         return false;
     }
 
-    ObjWebSocket* socket = AS_WEB_SOCKET(sockfd);
+    ObjSocket* socket = AS_SOCKET(sockfd);
     if (socket->closed) {
         msapi_runtimeError(vm, "Socket has already been closed");
         return false;

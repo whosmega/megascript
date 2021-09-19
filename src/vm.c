@@ -35,19 +35,27 @@
 
 #define ASSIGN_GLOBAL(vmpointer, frameptr, valueName, valueFeeder) \
     valueName = READ_CONSTANT(frameptr); \
-    bool found = getTable(&vmpointer->globals, AS_STRING(valueName), &valueFeeder); \
+    bool found = getTable(&vmpointer->globals->table, AS_STRING(valueName), &valueFeeder); \
     if (!found) { \
       msapi_runtimeError(vmpointer, "Error : Attempt to assign undefined global '%s'", AS_NATIVE_STRING(valueName)); \
       return INTERPRET_RUNTIME_ERROR; \
+    } \
+    if (vmpointer->currentModule != NULL) { \
+        writeObjStringArray(&vmpointer->currentModule->customGlobals, AS_STRING(valueName)); \
     }
+ 
  
 #define ASSIGN_LONG_GLOBAL(vmpointer, frameptr, valueName, valueFeeder) \
     valueName = READ_LONG_CONSTANT(frameptr); \
-    bool found = getTable(&vmpointer->globals, AS_STRING(valueName), &valueFeeder); \
+    bool found = getTable(&vmpointer->globals->table, AS_STRING(valueName), &valueFeeder); \
     if (!found) { \
       msapi_runtimeError(vmpointer, "Error : Attempt to assign undefined global '%s'", AS_NATIVE_STRING(valueName)); \
       return INTERPRET_RUNTIME_ERROR; \
+    } \
+    if (vmpointer->currentModule != NULL) { \
+        writeObjStringArray(&vmpointer->currentModule->customGlobals, AS_STRING(valueName)); \
     }
+ 
 
 #define push(vmptr, v) _push_(vmptr, v) 
 
@@ -103,7 +111,6 @@ void initVM(VM* vm) {
     vm->bytesAllocated = 0;
     vm->nextGC = 1024 * 1024;
     initTable(&vm->strings);
-    initTable(&vm->globals);
     initPtrTable(&vm->arrayMethods);
     initPtrTable(&vm->stringMethods);
     initPtrTable(&vm->tableMethods);
@@ -112,19 +119,21 @@ void initVM(VM* vm) {
     resetStack(vm);
     vm->running = false;
     initTable(&vm->importCache);
-    vm->importCount = 0;
-    
+    vm->moduleCount = 0;
+    vm->currentModule = NULL; 
+
     injectArrayMethods(vm);
     injectStringMethods(vm);
     injectTableMethods(vm);
     injectDllMethods(vm);
+    vm->globals = allocateTable(vm);
     // Setup globals 
     injectGlobals(vm);
 }
 
 void freeVM(VM* vm) {
     freeTable(&vm->strings);
-    freeTable(&vm->globals);
+    freeObject(vm, &vm->globals->obj);
     freeTable(&vm->importCache);
     freePtrTable(&vm->arrayMethods);
     freePtrTable(&vm->stringMethods);
@@ -139,6 +148,33 @@ void resetStack(VM* vm) {
     vm->stackTop = vm->stack;
     vm->UpvalueHead = NULL;
 }
+
+/* Making string array methods */
+void initObjStringArray(ObjStringArray* array) {
+    array->capacity = 0;
+    array->count = 0;
+    array->values = NULL;
+}
+
+
+void writeObjStringArray(ObjStringArray* array, ObjString* value) {
+    if (array->capacity < array->count + 1) {
+        int oldCapacity = array->capacity;
+        array->capacity = GROW_CAPACITY(oldCapacity);
+        array->values = GROW_ARRAY(ObjString*, array->values, oldCapacity, array->capacity);
+    }
+
+
+    array->values[array->count] = value;
+    array->count++;
+}
+
+void freeObjStringArray(ObjStringArray* array) {
+    FREE_ARRAY(ObjString*, array->values, array->capacity);
+    initObjStringArray(array);
+}
+
+
 
 /*                      VM API                      */
 
@@ -157,6 +193,7 @@ void msapi_runtimeError(VM* vm, const char* format, ...) {
 
 
     printf("\nCall Stack Traceback:\n");
+
     printf("In function: %s\n", vm->frames[vm->frameCount - 1].closure->function->name->allocated);
     
     for (int i = vm->frameCount - 2; i >= 0; i--) {
@@ -264,7 +301,7 @@ static bool invokeNativeMethod(VM* vm, ObjString* string, Obj* self,
     return true;
 }
 
-static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount) {
+static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount, bool isCoroutine) {
     ObjFunction* function = closure->function;
             
     if (vm->frameCount == FRAME_MAX) {
@@ -275,9 +312,9 @@ static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argC
     // Function should already be pushed on stack
     CallFrame frame;
     frame.closure = closure;
-    frame.ip = closure->function->chunk.code;
-    frame.slotPtr = vm->stackTop;     
+    frame.ip = closure->function->chunk.code; 
     frame.shouldReturn = shouldReturn;
+    frame.isCoroutine = isCoroutine;
 
     // the arguments have already been pushed before the the stack 
     // frame was pushed, so we relocate the callframe pointer to the 
@@ -313,6 +350,8 @@ static bool callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argC
         push(vm, OBJ(allocateArray(vm)));
     }
     
+    /* Set the appropriate global environment, when returning, the caller's env will be set */ 
+    vm->globals = closure->env;
     return true;
 }
 
@@ -320,7 +359,7 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
     switch (AS_OBJ(value)->type) {
         case OBJ_CLOSURE: {
             ObjClosure* closure = AS_CLOSURE(value);
-            return callClosure(vm, closure, shouldReturn, argCount);
+            return callClosure(vm, closure, shouldReturn, argCount, false);
         }
         case OBJ_NATIVE_FUNCTION: {
             NativeFuncPtr ptr = AS_NATIVE_FUNCTION(value)->funcPtr;
@@ -341,7 +380,7 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
             Value _init;
             if (getTable(&klass->methods, allocateString(vm, "_init", 5), &_init)) {
                 vm->stackTop[-argCount - 1] = OBJ(instance);        // set self
-                return callClosure(vm, AS_CLOSURE(_init), true, argCount);
+                return callClosure(vm, AS_CLOSURE(_init), true, argCount, false);
             }
             
             if (shouldReturn) {
@@ -353,7 +392,7 @@ static bool call(VM* vm, Value value, bool shouldReturn, int argCount) {
         case OBJ_METHOD: {
             ObjMethod* method = AS_METHOD(value);
             vm->stackTop[-argCount - 1] = OBJ(method->self);
-            callClosure(vm, method->closure, shouldReturn, argCount);
+            callClosure(vm, method->closure, shouldReturn, argCount, false);
             break;
         }
         default:
@@ -372,7 +411,11 @@ static bool callValue(VM* vm, Value value, bool shouldReturn, int argCount) {
     return call(vm, value, shouldReturn, argCount);
 }
 
-char* findFile(VM* vm, char* path) {
+bool msapi_callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount, bool isCoroutine) {
+    return callClosure(vm, closure, shouldReturn, argCount, isCoroutine);
+}
+
+char* findFile(VM* vm, char* path, bool genErr) {
     /* This function searches for the file in all supported ways */ 
    
     if (access(path, F_OK) == -1) {
@@ -386,13 +429,14 @@ char* findFile(VM* vm, char* path) {
             strcat(chars, "/");
             strcat(chars, path); 
             chars[length] = '\0';
-
+            
             if (access(chars, F_OK) != -1) {
                 /* We found it bois */
                 return chars;
             }
         }
-        msapi_runtimeError(vm, "Unable to locate file : %s", path);
+
+        if (genErr) msapi_runtimeError(vm, "Unable to locate file : %s", path);
         return NULL;
     } else {
         int length = strlen(path);
@@ -403,131 +447,141 @@ char* findFile(VM* vm, char* path) {
     }
 }
 
-static bool import(VM* vm, ObjString* importPath) {
-    char* extension = NULL;
-    char* name = &importPath->allocated[0];
-    int nameLength = 0;
-    bool stop = false;
+static bool importScript(VM* vm, const char* path, ObjString* fileName) {
+    /* First we check for this file in the cache, 
+     * to make sure its not getting re-imported */
+    Value cached = NIL();
 
-    for (int i = 0; i < importPath->length; i++) {
-
-        if (importPath->allocated[i] == '.') {
-            extension = &importPath->allocated[i + 1];
-            stop = true;
-        } else if (importPath->allocated[i] == '/' || importPath->allocated[i] == '\\') {
-            name = &importPath->allocated[i + 1];
-            nameLength = 0;
-            stop = false;
-        } else {
-            if (!stop) {
-                nameLength++;
-            }
-        }
-    }
-    
-    Value cache;
-    ObjString* fileName = allocateString(vm, name, nameLength);
-    if (getTable(&vm->importCache, fileName, &cache)) {
-        /* If this file has already been executed, we dont run it again */
-
-        insertTable(&vm->globals, fileName, cache);
+    if (getTable(&vm->importCache, fileName, &cached)) {
+        insertTable(&vm->globals->table, fileName, cached);
         return true;
     }
 
-    if (!extension || strcmp(extension, "meg") == 0) {
-        // meg files
-        char* mainpath = NULL;
-        if (!extension) {
-            char path[importPath->length + 5];              // .meg + '\0' = 5
-            strcpy(path, importPath->allocated);
-            strcat(path, ".meg");
-            
-            mainpath = findFile(vm, path);
-        } else {
-            mainpath = findFile(vm, importPath->allocated);
-        }
+    /* If this file is not in the cache, we start by reading the file contents */ 
+    FILE* file = fopen(path, "r");
+    size_t fileLength = 0;
+    
+    /* We first move our cursor to the end of the file */
+    fseek(file, 0, SEEK_END);
+    /* Now we read the offset from the start of the file, 
+     * which is the total length in bytes */
+    fileLength = ftell(file);
+    /* We move the cursor back to the start */
+    fseek(file, 0, SEEK_SET);
 
-        if (mainpath == NULL) return false; 
-        FILE* file = fopen(mainpath, "r");
-        
+    /* We allocate a block to read our file into */
+    char* fileContent = (char*)reallocate(vm, NULL, 0, fileLength + 1);
+    fileContent[fileLength] = '\0';
+    fread(fileContent, 1, fileLength, file);
+    fclose(file);
 
-        // The file has been found, opened and is a verified .meg file
-        fseek(file, 0, SEEK_END);
-        long length = ftell(file);
-        fseek(file, 0, SEEK_SET);
+    /* We can now allocate a function and begin compiling *
+     * We also push it to avoid the garbage collection of it */
+    ObjFunction* function = allocateFunction(vm, fileName, 0);
+    push(vm, OBJ(function));
 
-        char* string = (char*)reallocate(vm, NULL, 0, length + 1);
-        fread(string, 1, length, file);
-        fclose(file);
-        free(mainpath);
-        // We have the contents of the file now 
-        ObjFunction* function = allocateFunction(vm, importPath, 0);
-        push(vm, OBJ(function));
-        vm->running = false;
-        if (compile(string, vm, function, false) == INTERPRET_COMPILE_ERROR) {
-            vm->running = true;
-            return false;
-        }
-        vm->running = true;
+    /* We change the state of the vm to 'not running' since we 
+     * will begin compiling the file */
+    vm->running = false;
+    InterpretResult compilationResult = compile(fileContent, vm, function, false);
+    vm->running = true;
 
-        // preserve current global state
-        
-        if (vm->importCount >= IMPORT_CYCLE_MAX) {
-            msapi_runtimeError(vm, "Import stack overflow (possible circular import)");
-            return false;
-        }
-        
-        vm->importStack[vm->importCount] = vm->globals;
-        vm->importCount++;
-        initTable(&vm->globals);
-        injectGlobals(vm);
+    /* We have finished compiling, we check the result */
+    if (compilationResult == INTERPRET_COMPILE_ERROR) return false;
+    if (vm->moduleCount >= IMPORT_CYCLE_MAX) {
+        msapi_runtimeError(vm, "Import stack full (possible circular import)");
+        return false;
+    }
+    
+    /* We can now proceed to create a new module object for the vm */
+    Module module;
+    module.moduleName = fileName;
+    module.globals = allocateTable(vm);
+    initObjStringArray(&module.customGlobals);
+    
+    /* After initialization, we add it to the vm and update */
+    vm->modules[vm->moduleCount] = module;
+    vm->currentModule = &vm->modules[vm->moduleCount];
+    vm->moduleCount++;
+    vm->globals = vm->currentModule->globals;
+    
+    /* We inject globals into it */ 
+    injectGlobals(vm);
+    
+    /* Now we wrap it into a closure, with the latest global environment, 
+     * and pop the function we pushed earlier for garbge collection protection */
+    ObjClosure* closure = allocateClosure(vm, function, vm->globals);
+    pop(vm);
+    
+    /* We can finally attempt a call to the module */
+    push(vm, OBJ(closure));
+    return callClosure(vm, closure, false, 0, false);
+}
 
-        ObjClosure* closure = allocateClosure(vm, function);
-        pop(vm);
-
-        /* The filename stays in the place of the function in the callframe */
-        push(vm, OBJ(fileName));
-        // push(vm, OBJ(closure));
-        
-        if (!callClosure(vm, closure, false, 0)) return false;
-    } else if (strcmp(extension, "so") == 0 || strcmp(extension, "dll") == 0) {
-        // so/dll 
-            
-        // Check Cache 
-        Value cache;
-        bool foundCache = getTable(&vm->importCache, fileName, &cache);
-
-        if (foundCache) {
-            insertTable(&vm->globals, fileName, cache);
-            return true;
-        }
-
-        char* path = findFile(vm, importPath->allocated);
-        if (path == NULL) return false;
-        
-
-        void* handle = dlopen(path, RTLD_NOW);
-        free(path);
-        if (handle == NULL) {
-            char* err = dlerror();
-            if (err != NULL) {
-                printf("%s\n", err);
-            }
-            msapi_runtimeError(vm, "Error opening dynamic link library");
-
-            return false; 
-        }
-
-        ObjDllContainer* container = allocateDllContainer(vm, fileName, handle);
-        insertTable(&vm->importCache, fileName, OBJ(container));
-        insertTable(&vm->globals, fileName, OBJ(container));
-        
-    } else {
-        msapi_runtimeError(vm, "Cannot open file : Unknown file type");
+static bool importSharedLib(VM* vm, const char* path, ObjString* fileName) {
+    void* fileHandle = dlopen(path, RTLD_NOW);
+    
+    if (fileHandle == NULL) {
+        msapi_runtimeError(vm, "An error occured while opening share library");
         return false;
     }
 
+    ObjDllContainer* container = allocateDllContainer(vm, fileName, fileHandle);
+    insertTable(&vm->globals->table, fileName, OBJ(container));
     return true;
+}
+
+static bool import(VM* vm, ObjString* importPath) {
+    char* name = &importPath->allocated[0];
+    int nameLength = 0;
+
+    for (int i = 0; i < importPath->length; i++) {
+
+        if (importPath->allocated[i] == '/' || importPath->allocated[i] == '\\') {
+            name = &importPath->allocated[i + 1];
+            nameLength = 0;
+        } else {
+            nameLength++;
+        }
+    }
+    
+    int pathLen = strlen(importPath->allocated);
+    char buffer[pathLen + 5];
+    ObjString* fileName = allocateString(vm, name, nameLength);
+    char* foundFile = NULL;
+    char* pathEndPtr = &buffer[pathLen];
+
+    memcpy(buffer, importPath->allocated, importPath->length);
+    memcpy(pathEndPtr, ".meg\0", 5);
+    foundFile = findFile(vm, buffer, false);
+    
+    if (foundFile != NULL) {
+        bool result = importScript(vm, foundFile, fileName);
+        reallocate(vm, foundFile, sizeof(*foundFile), 0);
+        return result;
+    }
+    
+    memcpy(pathEndPtr, ".so\0", 4);
+    foundFile = findFile(vm, buffer, false);
+
+    if (foundFile != NULL) {
+        bool result = importSharedLib(vm, foundFile, fileName);
+        reallocate(vm, foundFile, sizeof(*foundFile), 0);
+        return result;
+    }
+
+    memcpy(pathEndPtr, ".dll\0", 5);
+    foundFile = findFile(vm, buffer, false);
+
+    if (foundFile != NULL) {
+        bool result = importSharedLib(vm, foundFile, fileName);
+        reallocate(vm, foundFile, sizeof(*foundFile), 0);
+        return result;
+    }
+
+    /* No suitable file found */
+    msapi_runtimeError(vm, "Could not locate file");
+    return false;
 }
 
 static bool checkCustomIndexArray(VM* vm, ObjArray* array, Value index) {
@@ -538,7 +592,7 @@ static bool checkCustomIndexArray(VM* vm, ObjArray* array, Value index) {
 
     double numIndex = AS_NUMBER(index);
 
-    if (fmod(numIndex, 1) != 0 || numIndex < 0) {
+    if (floor(numIndex) != numIndex || numIndex < 0) {
         msapi_runtimeError(vm, "Array Index is expected to be a positive integer, got %g", numIndex);
         return false;
     }
@@ -552,7 +606,7 @@ static bool checkCustomIndexArray(VM* vm, ObjArray* array, Value index) {
     return true;
 }
 
-static ObjUpvalue* captureUpvalue(VM* vm, Value* value) {
+static ObjUpvalue* captureUpvalue(VM* vm, Value* value, uint8_t stackIndex) {
     ObjUpvalue* previousUpvalue = NULL;
     ObjUpvalue* upvalue = vm->UpvalueHead;
 
@@ -587,14 +641,30 @@ static ObjUpvalue* captureUpvalue(VM* vm, Value* value) {
     return newUpvalue;
 }
 
-static void closeUpvalues(VM* vm, Value* slot) {
-
-     while (vm->UpvalueHead != NULL && vm->UpvalueHead->value >= slot) {
+static ObjUpvalue* closeUpvalues(VM* vm, Value* slot) {
+    ObjUpvalue* last = NULL;
+    ObjUpvalue* first = vm->UpvalueHead;
+    while (vm->UpvalueHead != NULL && vm->UpvalueHead->value >= slot) {
         ObjUpvalue* openUpvalue = vm->UpvalueHead;
         openUpvalue->closed = *openUpvalue->value;
         openUpvalue->value = &openUpvalue->closed;
         vm->UpvalueHead = openUpvalue->next;
+        last = openUpvalue;
     }
+
+    if (last != NULL) {
+        last->next = NULL;
+    }
+    
+    /* Returns a pointer to the first upvalue that was closed,
+     * it preserves the linked list order, and marks the last upvalue's next to 'NULL' 
+     * The first upvalue is the last on the stack */
+
+    return first;
+}
+
+ObjUpvalue* msapi_closeUpvalues(VM* vm, Value* slot) {
+    return closeUpvalues(vm, slot);
 }
 
 /*
@@ -812,9 +882,9 @@ bool msmethod_dll_query(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     }
 
     popn(vm, argCount + 1);
-    NativeFuncPtr ptr = dlsym(container->handle, AS_NATIVE_STRING(query));
+    NativeMethodPtr ptr = dlsym(container->handle, AS_NATIVE_STRING(query));
     
-    push(vm, ptr == NULL ? NIL() : OBJ(allocateNativeFunction(vm, AS_STRING(query), ptr)));
+    push(vm, ptr == NULL ? NIL() : OBJ(allocateNativeMethod(vm, AS_STRING(query), &container->obj, ptr)));
     return true;
 }
 /* ---------------------------------------------- */
@@ -840,6 +910,94 @@ static InterpretResult run(VM* vm) {
             case OP_ZERO: push(vm, NATIVE_TO_NUMBER(0)); break; 
             case OP_MIN1: push(vm, NATIVE_TO_NUMBER(-1)); break;
             case OP_PLUS1: push(vm, NATIVE_TO_NUMBER(1)); break;
+            case OP_BIT_AND: {
+                Value rightOp = pop(vm);
+                Value leftOp = pop(vm);
+
+                if (!CHECK_NUMBER(rightOp) || !CHECK_NUMBER(leftOp)) {
+                    msapi_runtimeError(vm, "Expected integer operands to `&`");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double rightOpNum = AS_NUMBER(rightOp);
+                double leftOpNum = AS_NUMBER(leftOp);
+                
+                if (floor(rightOpNum) != rightOpNum || floor(leftOpNum) != leftOpNum) {
+                    msapi_runtimeError(vm, "Expected operands to be integers");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                int result = (int)leftOpNum & (int)rightOpNum;
+                
+                push(vm, NATIVE_TO_NUMBER(result));
+                break;
+            }
+            case OP_BIT_OR: {
+                Value rightOp = pop(vm);
+                Value leftOp = pop(vm);
+
+                if (!CHECK_NUMBER(rightOp) || !CHECK_NUMBER(leftOp)) {
+                    msapi_runtimeError(vm, "Expected integer operands to `|`");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double rightOpNum = AS_NUMBER(rightOp);
+                double leftOpNum = AS_NUMBER(leftOp);
+                
+                if (floor(rightOpNum) != rightOpNum || floor(leftOpNum) != leftOpNum) {
+                    msapi_runtimeError(vm, "Expected operands to be integers");
+                }
+
+                int result = (int)leftOpNum | (int)rightOpNum;
+                
+                push(vm, NATIVE_TO_NUMBER(result));
+                break;
+ 
+            }
+            case OP_SHIFTL: {
+                Value rightOp = pop(vm);
+                Value leftOp = pop(vm);
+
+                if (!CHECK_NUMBER(rightOp) || !CHECK_NUMBER(leftOp)) {
+                    msapi_runtimeError(vm, "Expected integer operands to `<<`");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double rightOpNum = AS_NUMBER(rightOp);
+                double leftOpNum = AS_NUMBER(leftOp);
+                
+                if (floor(rightOpNum) != rightOpNum || floor(leftOpNum) != leftOpNum) {
+                    msapi_runtimeError(vm, "Expected operands to be integers");
+                }
+
+                int result = (int)leftOpNum << (int)rightOpNum;
+                
+                push(vm, NATIVE_TO_NUMBER(result));
+                break;
+ 
+            }
+            case OP_SHIFTR: {
+                Value rightOp = pop(vm);
+                Value leftOp = pop(vm);
+
+                if (!CHECK_NUMBER(rightOp) || !CHECK_NUMBER(leftOp)) {
+                    msapi_runtimeError(vm, "Expected integer operands to `>>`");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                double rightOpNum = AS_NUMBER(rightOp);
+                double leftOpNum = AS_NUMBER(leftOp);
+                
+                if (floor(rightOpNum) != rightOpNum || floor(leftOpNum) != leftOpNum) {
+                    msapi_runtimeError(vm, "Expected operands to be integers");
+                }
+
+                int result = (int)leftOpNum >> (int)rightOpNum;
+                
+                push(vm, NATIVE_TO_NUMBER(result));
+                break;
+ 
+            }
             case OP_IMPORT: {
                 ObjString* string = AS_STRING(READ_CONSTANT(frame));
                 if (!import(vm, string)) return INTERPRET_RUNTIME_ERROR;
@@ -853,25 +1011,42 @@ static InterpretResult run(VM* vm) {
                 break;
             }
             case OP_RETFILE: {
-                /* We need to move all upvalues in this function to the heap */
+                ObjString* moduleName = vm->currentModule->moduleName;
+
+                /* Move all upvalues to the heap */
                 closeUpvalues(vm, frame->slotPtr);
-
-                ObjString* fileName = AS_STRING(*frame->slotPtr);
-
+                
                 vm->stackTop = frame->slotPtr;
                 vm->frameCount--;
                 frame = &vm->frames[vm->frameCount - 1];
-                Table oldGlobals = vm->globals;
+                                
+                /* Make a copy for user use */
+                ObjTable* userTable = allocateTable(vm);
 
-                // restore globals
-                vm->globals = vm->importStack[vm->importCount - 1];
+                for (int i = 0; i < vm->currentModule->customGlobals.count; i++) {
+                    ObjString* stringKey = vm->currentModule->customGlobals.values[i];
+                    Value holder = NIL();
+                    getTable(&vm->currentModule->globals->table, stringKey, &holder);
+                    insertTable(&userTable->table, stringKey, holder);
+                }
 
-                ObjTable* table = allocateTable(vm);
-                table->table = oldGlobals;
-                    
-                insertTable(&vm->globals, fileName, OBJ(table));
-                insertTable(&vm->importCache, fileName, OBJ(table));
-                vm->importCount--;
+                /* Restore old state */ 
+                freeObjStringArray(&vm->currentModule->customGlobals);
+                vm->modules[vm->moduleCount - 1].globals = NULL;
+                vm->moduleCount--;
+
+                if (vm->moduleCount == 0)
+                    /* If there is no module before this one, we mark this as null */
+                    vm->currentModule = NULL;
+                else
+                    /* Otherwise we mark it as the previous module */
+                    vm->currentModule--;
+
+                /* Restore globals */
+                vm->globals = frame->closure->env;
+
+                insertTable(&vm->importCache, moduleName, OBJ(userTable));
+                insertTable(&vm->globals->table, moduleName, OBJ(userTable));
                 break;
             }
             case OP_CLASS: {
@@ -1061,14 +1236,14 @@ static InterpretResult run(VM* vm) {
             }
             case OP_CLOSURE: {
                 ObjFunction* function = AS_FUNCTION(READ_CONSTANT(frame));
-                ObjClosure* closure = allocateClosure(vm, function);
+                ObjClosure* closure = allocateClosure(vm, function, vm->globals);
 
                 for (int i = 0; i < closure->upvalueCount; i++) {
                     bool isLocal = READ_BYTE(frame);
                     uint8_t index = READ_BYTE(frame);
 
                     if (isLocal) {
-                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index);
+                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index, index);
                     } else {
                         closure->upvalues[i] = frame->closure->upvalues[index];
                     }
@@ -1079,14 +1254,14 @@ static InterpretResult run(VM* vm) {
             }
             case OP_CLOSURE_LONG: {
                 ObjFunction* function = AS_FUNCTION(READ_LONG_CONSTANT(frame));
-                ObjClosure* closure = allocateClosure(vm, function);
+                ObjClosure* closure = allocateClosure(vm, function, vm->globals);
 
                 for (int i = 0; i < closure->upvalueCount; i++) {
                     bool isLocal = READ_BYTE(frame);
                     uint8_t index = READ_BYTE(frame);
 
                     if (isLocal) {
-                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index);
+                        closure->upvalues[i] = captureUpvalue(vm, frame->slotPtr + index, index);
                     } else {
                         closure->upvalues[i] = frame->closure->upvalues[index];
                     }
@@ -1834,7 +2009,7 @@ static InterpretResult run(VM* vm) {
                         if (getTable(&ins->klass->methods, string, &closure)) {
                             // set self
                             vm->stackTop[-argCount - 1] = callVal;
-                            if (!callClosure(vm, AS_CLOSURE(closure), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
+                            if (!callClosure(vm, AS_CLOSURE(closure), shouldReturn, argCount, false)) return INTERPRET_RUNTIME_ERROR;
                         } else if (getTable(&ins->table, string, &closure)) {
                             /* If this is a field, its just a normal callable body */
                             if (!callValue(vm, closure, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
@@ -1958,7 +2133,7 @@ static InterpretResult run(VM* vm) {
                 Value method;
                 if (getTable(&super->methods, string, &method)) {
                     vm->stackTop[-argCount - 1] = OBJ(self);
-                    if (!callClosure(vm, AS_CLOSURE(method), shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;    
+                    if (!callClosure(vm, AS_CLOSURE(method), shouldReturn, argCount, false)) return INTERPRET_RUNTIME_ERROR;    
                 } else if (getTable(&super->fields, string, &method)) {
                     if (!callValue(vm, method, shouldReturn, argCount)) return INTERPRET_RUNTIME_ERROR;
                 } else {
@@ -1975,6 +2150,11 @@ static InterpretResult run(VM* vm) {
                 if (doesReturn) {
                     ret = pop(vm);
                 }
+                
+                /* If function is a coroutine, mark it as dead */
+                if (frame->isCoroutine) {
+                    AS_COROUTINE(frame->slotPtr[0])->state = CORO_DEAD;
+                }
 
                 closeUpvalues(vm, frame->slotPtr);          // move all upvalues to heap
                 vm->stackTop = frame->slotPtr;
@@ -1983,7 +2163,8 @@ static InterpretResult run(VM* vm) {
                 vm->frameCount--;
                 // Update the frame variable
                 frame = &vm->frames[vm->frameCount - 1];
-                
+                /* Reset the global environment */
+                vm->globals = frame->closure->env;
                 if (shouldReturn) {
                     push(vm, ret); 
                 }
@@ -1997,18 +2178,27 @@ static InterpretResult run(VM* vm) {
             }
             case OP_DEFINE_GLOBAL: {
                 Value name = READ_CONSTANT(frame);
-                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                insertTable(&vm->globals->table, AS_STRING(name), pop(vm));
+
+                if (vm->currentModule != NULL) {
+                    writeObjStringArray(&vm->currentModule->customGlobals, AS_STRING(name));
+                }
                 break;
             }
             case OP_DEFINE_LONG_GLOBAL: {
                 Value name = READ_LONG_CONSTANT(frame);
-                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                insertTable(&vm->globals->table, AS_STRING(name), pop(vm));
+
+                if (vm->currentModule != NULL) {
+                    writeObjStringArray(&vm->currentModule->customGlobals, AS_STRING(name));
+                }
+ 
                 break;
             }
             case OP_GET_GLOBAL: {
                 Value feeder;
                 Value name = READ_CONSTANT(frame);
-                bool found = getTable(&vm->globals, AS_STRING(name), &feeder);
+                bool found = getTable(&vm->globals->table, AS_STRING(name), &feeder);
 
                 push(vm, found ? feeder : NIL());
                 break;
@@ -2016,7 +2206,7 @@ static InterpretResult run(VM* vm) {
             case OP_GET_LONG_GLOBAL: {
                 Value feeder;
                 Value name = READ_LONG_CONSTANT(frame);
-                bool found = getTable(&vm->globals, AS_STRING(name), &feeder);
+                bool found = getTable(&vm->globals->table, AS_STRING(name), &feeder);
 
                 push(vm, found ? feeder : NIL());
                 break;
@@ -2025,14 +2215,14 @@ static InterpretResult run(VM* vm) {
                 Value name;
                 Value feeder;
                 ASSIGN_GLOBAL(vm, frame, name, feeder);
-                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                insertTable(&vm->globals->table, AS_STRING(name), pop(vm));
                 break;
             }
             case OP_ASSIGN_LONG_GLOBAL: {
                 Value name;
                 Value feeder;
                 ASSIGN_LONG_GLOBAL(vm, frame, name, feeder);
-                insertTable(&vm->globals, AS_STRING(name), pop(vm));
+                insertTable(&vm->globals->table, AS_STRING(name), pop(vm));
                 break;
             }
             case OP_PLUS_ASSIGN_GLOBAL: {
@@ -2042,12 +2232,12 @@ static InterpretResult run(VM* vm) {
                 ASSIGN_GLOBAL(vm, frame, name, feeder);
             
                 if (CHECK_NUMBER(feeder) && CHECK_NUMBER(increment)) {
-                    insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                    insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) + AS_NUMBER(increment)
                     ));
 
                 } else if (CHECK_STRING(feeder) && CHECK_STRING(increment)) {
-                    insertTable(&vm->globals, AS_STRING(name), OBJ(
+                    insertTable(&vm->globals->table, AS_STRING(name), OBJ(
                                 strConcat(vm, feeder, increment)
                     ));
                 } else {
@@ -2066,12 +2256,12 @@ static InterpretResult run(VM* vm) {
                 ASSIGN_LONG_GLOBAL(vm, frame, name, feeder);
                 
                 if (CHECK_NUMBER(feeder) && CHECK_NUMBER(increment)) {
-                    insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                    insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) + AS_NUMBER(increment)
                     ));
 
                 } else if (CHECK_STRING(feeder) && CHECK_STRING(increment)) {
-                    insertTable(&vm->globals, AS_STRING(name), OBJ(
+                    insertTable(&vm->globals->table, AS_STRING(name), OBJ(
                                 strConcat(vm, feeder, increment)
                     ));
                 } else {
@@ -2100,7 +2290,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) - AS_NUMBER(increment)
                 ));
                 break;
@@ -2122,7 +2312,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) - AS_NUMBER(increment)
                 ));
                 break;
@@ -2145,7 +2335,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) * AS_NUMBER(increment)
                 ));
                 break;
@@ -2167,7 +2357,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) * AS_NUMBER(increment)
                 ));
                 break;
@@ -2196,7 +2386,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) / AS_NUMBER(increment)
                 ));
                 break;
@@ -2224,7 +2414,7 @@ static InterpretResult run(VM* vm) {
                 }
 
 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             AS_NUMBER(feeder) / AS_NUMBER(increment)
                 ));
                 break;
@@ -2247,7 +2437,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             pow(AS_NUMBER(feeder), AS_NUMBER(increment))
                 ));
                 break;
@@ -2269,7 +2459,7 @@ static InterpretResult run(VM* vm) {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 
-                insertTable(&vm->globals, AS_STRING(name), NATIVE_TO_NUMBER(
+                insertTable(&vm->globals->table, AS_STRING(name), NATIVE_TO_NUMBER(
                             pow(AS_NUMBER(feeder), AS_NUMBER(increment))
                 ));
                 break;
@@ -2573,7 +2763,7 @@ error_label:
 InterpretResult interpret(VM* vm, ObjFunction* function) {
     vm->running = true;
     _push_(vm, OBJ(function));
-    ObjClosure* closure = allocateClosure(vm, function);
+    ObjClosure* closure = allocateClosure(vm, function, vm->globals);
     pop(vm);
     _push_(vm, OBJ(closure));
     

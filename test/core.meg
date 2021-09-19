@@ -367,14 +367,14 @@ func imports():
 
     json = nil
 
-    import "lib/socket.dll"
+    import "lib/_socket"
 
-    var open = socket.query("newSocket")
-    var close = socket.query("closeSocket")
+    var open = _socket.query("newSocket")
+    var close = _socket.query("closeSocket")
 
     close(open("www.google.com", 80))
-    socket.close()
-    socket = nil
+    _socket.close()
+    _socket = nil
 
     return true 
 end 

@@ -28,8 +28,9 @@ typedef struct ObjMethod ObjMethod;
 typedef struct ObjTable ObjTable;
 typedef struct ObjNativeMethod ObjNativeMethod;
 typedef struct ObjDllContainer ObjDllContainer;
-typedef struct ObjWebSocket ObjWebSocket;
-typedef struct ObjWebSSocket ObjWebSSocket;
+typedef struct ObjSocket ObjSocket;
+typedef struct ObjSSocket ObjSSocket;
+typedef struct ObjCoroutine ObjCoroutine;
 /* - - - - - - - - - - - - - -*/
 
 typedef struct {

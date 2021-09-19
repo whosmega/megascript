@@ -13,5 +13,6 @@ Value* msapi_peekptr(VM* vm, unsigned int index);
 void msapi_pushn(VM* vm, Value value, unsigned int count);
 void msapi_popn(VM* vm, unsigned int count); 
 Value msapi_getArg(VM* vm, int number, int argCount);
-
+ObjUpvalue* msapi_closeUpvalues(VM* vm, Value* slot);
+bool msapi_callClosure(VM* vm, ObjClosure* closure, bool shouldReturn, int argCount, bool isCoroutine);
 #endif

@@ -1,0 +1,79 @@
+// This library is based on the standard socket libraries
+
+import "lib/binops.meg"
+import "lib/socket.meg" 
+
+global class WebSocket:
+    closed = false 
+    eventDispatcher = nil 
+
+    func _init(url, port):
+        if !port: port = 443 end // default port 
+        
+        var splitted = url.split("://")
+        if #splitted < 2:
+            print("Expected Protocol Specification")
+            return 
+        end 
+    
+        if splitted[0] == "ws":
+            // web socket  
+            self.mode = socket.CONN_MODE.UNSECURE
+        elseif splitted[0] == "wss":
+            self.mode = socket.CONN_MODE.SECURE
+        else:
+            print("Unknown WebSocket Protocol Identifier : " + splitted[0])
+            return
+        end
+
+        self.host = splitted[1] 
+        self.port = port
+        self.socket = socket.Socket(self.host, self.port, self.mode)
+    end
+    
+    func connect():
+        // Attempt a websocket connection connection 
+        var headers = {
+            "Host" = self.host,
+            "Upgrade" = "websocket",
+            "Connection" = "Upgrade",
+            "Sec-WebSocket-Key" = "dGhlIHNhbXBsZSBub25jZQ==",
+            "Sec-WebSocket-Origin" = self.mode == socket.CONN_MODE.SECURE and "https://" or "http://",
+            "Sec-WebSocket-Protocol" = "chat, superchat",
+            "Sec-WebSocket-Version" = 13
+        }
+
+        var response = self.socket.get("/", headers)
+        if response.statusCode != 101:
+            return false 
+        end 
+        return response
+    end 
+    
+    func setEventDispatcher(dispatcher):
+        self.eventDispatcher = dispatcher
+    end
+
+    func eventLoop():
+        while true:
+            var data = self.recv()
+            if data and self.eventDispatcher:
+                if self.eventDispatcher(self, data): return end 
+            end
+        end
+    end
+
+    func send(data):
+        self.socket.send(data)
+    end
+
+    func recv():
+        var data = self.socket.recv()
+    end
+
+    func close():
+        if self.closed: return end 
+        self.closed = true     
+        self.socket.close()
+    end
+end

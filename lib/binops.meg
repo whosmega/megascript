@@ -1,0 +1,67 @@
+var UINT8_MAX = 2^8 - 1
+var UINT16_MAX = 2^16 - 1 
+var UINT32_MAX = 2^32 - 1 
+
+global func uintToBin(int):
+    if type(int) != "number":
+        return print("Expected a number for int to bin")
+    end
+    var c
+    if int <= UINT8_MAX:
+        c = 8
+    elseif int > UINT8_MAX and int <= UINT16_MAX:
+        c = 16
+    elseif int <= UINT32_MAX:
+        c = 31
+    else:
+        print("Number too big to convert")
+        return
+    end
+
+    var n = int & (2^c-1)                             // safety measure for masking bits
+    var string = c == 31 and "0" or ""
+    
+    for i in c - 1, 0, -1:
+        string += str((n >> i) & 1)
+    end
+
+    return string
+end
+
+global func binToUint(binString):
+    if type(binString) != "string":
+        return print("Expected a string for bin to int conversion")
+    end
+
+    var int = 0 
+    var iterate = #binString - 1
+
+    for i in iterate, 0, -1:
+        var c = binString[iterate - i]
+        var number = num(c)
+        
+        if number:
+            int += 2^i * number
+        end
+    end 
+
+    return int
+end
+
+
+global func makebyte(binaryString):
+    if type(binaryString) != "string":
+        return print("Expected a binary string")
+    end
+
+    var c = char(binToUint(binaryString))
+    return c
+end
+
+global func readByte(c):
+    if type(c) != "string": 
+        return print("Expected a character")
+    end
+    var ascii = c.getAscii()
+    return uintToBin(c)
+end

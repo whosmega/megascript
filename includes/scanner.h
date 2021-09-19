@@ -24,7 +24,7 @@ typedef enum {
     TOKEN_POW_EQUAL, TOKEN_MOD_EQUAL,
 
     TOKEN_IDENTIFIER, TOKEN_STRING, TOKEN_NUMBER,                                   // [variablename, "hello", 121]
-
+    TOKEN_SHIFTL, TOKEN_SHIFTR, TOKEN_BIT_AND, TOKEN_BIT_OR,                       /* << >> & | */
     TOKEN_OR, TOKEN_AND, TOKEN_WHILE, TOKEN_FOR,                                   /* [or, and, while, for, false,
                                                                                        true, if, else, elseif] */
     TOKEN_FALSE, TOKEN_TRUE, TOKEN_IF, TOKEN_ELSE, TOKEN_ELSEIF,

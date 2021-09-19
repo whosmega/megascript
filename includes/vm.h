@@ -12,37 +12,57 @@
 #define IMPORT_CYCLE_MAX 50
 
 typedef struct {
+    int count;
+    int capacity;
+    ObjString** values;
+} ObjStringArray;
+
+
+void initObjStringArray(ObjStringArray* array);
+void writeObjStringArray(ObjStringArray* array, ObjString* value);   
+void freeObjStringArray(ObjStringArray* array);
+
+typedef struct {
     ObjClosure* closure;
     uint8_t* ip;
     Value* slotPtr;
     bool shouldReturn;
+    bool isCoroutine;
 } CallFrame;
+
+typedef struct {
+    ObjTable* globals;
+    ObjStringArray customGlobals;
+    ObjString* moduleName;
+} Module;
 
 typedef struct {
     CallFrame frames[FRAME_MAX];
     int frameCount;
-    Value stack[STACK_MAX]; /* Stack */
+    Value stack[STACK_MAX];       /* Stack */
     Obj** greyStack;
     int greyCount;
     int greyCapacity;
     Value* stackTop;
-    Table strings;          /* Used for string interning */
-    Table globals;
+    Table strings;                /* Used for string interning */
+    ObjTable* globals;
+    Module* currentModule;
     
-    PtrTable arrayMethods;     /* Used for storing methods for arrays */ 
+
+    PtrTable arrayMethods;        /* Used for storing methods for arrays */ 
     PtrTable stringMethods;     
     PtrTable tableMethods;
     PtrTable dllMethods;
 
-    Obj* ObjHead;       /* Used for tracking the object linked list */
+    Obj* ObjHead;                 /* Used for tracking the object linked list */
     ObjUpvalue* UpvalueHead;
     size_t bytesAllocated;
     size_t nextGC;
     bool running;
 
     Table importCache;
-    Table importStack[IMPORT_CYCLE_MAX];         // stack for global array 
-    int importCount;
+    Module modules[IMPORT_CYCLE_MAX];
+    int moduleCount;
 } VM;
 
 
@@ -58,7 +78,7 @@ void freeVM(VM* vm);
 InterpretResult interpret(VM* vm, ObjFunction* function);
 void resetStack(VM* vm);
 
-char* findFile(VM* vm, char* path); 
+char* findFile(VM* vm, char* path, bool genErr); 
 bool msmethod_array_insert(VM* vm, Obj* self, int argCount, bool shouldReturn); 
 bool msmethod_string_capture(VM* vm, Obj* self, int argCount, bool shouldReturn);
 bool msmethod_string_split(VM* vm, Obj* self, int argCount, bool shouldReturn);

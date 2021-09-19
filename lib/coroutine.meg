@@ -1,0 +1,23 @@
+import "lib/_coroutine"
+
+global RUNNING = "running"
+global YIELDING = "yielding"
+global DEAD = "dead"
+
+global resume = _coroutine.query("resume")
+global yield = _coroutine.query("yield")
+global create = _coroutine.query("create")
+var _state = _coroutine.query("state")
+
+global func state(c):
+    var returned = _state(c)
+    if returned == 0: return RUNNING end
+    if returned == 1: return YIELDING end
+    if returned == 2: return DEAD end
+end
+
+global func wrap(c):
+    var coro = create(c)
+    return [c, resume(coro)]
+end
+

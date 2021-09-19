@@ -1,0 +1,58 @@
+// This library is based on the standard socket libraries 
+
+import "lib/socket"
+
+func getComponents(url):
+    var components = []
+    var splitted = url.split("://")
+
+    if #splitted < 2:
+        print("Expected a protocol specifier")
+        return
+    end 
+
+    if splitted[0] == "https":
+        components.insert(socket.CONN_MODE.SECURE)
+    elseif splitted[0] == "http":
+        components.insert(socket.CONN_MODE.UNSECURE)
+    else:
+        print("Invalid Protocol Identifier : " + splitted[0])
+        return 
+    end
+
+    components.insert(splitted[1])
+
+    return components
+end
+
+global func get(url, endpoint, port, headers):
+    if !port: port = 443 end 
+    var components = getComponents(url)
+
+    if !components: return end 
+    var mode = components[0]
+    var host = components[1]
+
+    var connection = socket.Socket(host, port, mode)
+    var response = connection.get(endpoint, headers or {})
+    
+    connection.close()
+    return response
+end
+
+global func post(url, endpoint, port, headers, body):
+    if !port: port = 443 end 
+    if !body: body = "" end 
+
+    var components = getComponents(url)
+    if !components: return end 
+    var mode = components[0]
+    var host = components[1]
+
+    var connection = socket.Socket(host, port, mode)
+    var response = connection.post(endpoint, headers or {}, body)
+    connection.close()
+    return response
+end
+
+

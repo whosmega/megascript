@@ -15,12 +15,10 @@
 /* Read Socket might need to be called in a loop to get the full response */
 
 int _readSocket(VM* vm, SSOCKET* ssocket, char** bufferPtr) {
-    int max = 2000;
+    int max = 1300;
     char response[max + 1];
     int result = 0;
-    
     result = BIO_read(ssocket->ssl_bio, response, max);
-
     if (result == -1) {
         return -1;
     } else if (result == 0) {
@@ -91,7 +89,7 @@ SSOCKET* _newSocket(VM* vm, char* host, int port) {
     /* We load the valid certificates folder to tell openssl which directory 
      * to look in when checking certificates */ 
 
-    char* name = findFile(vm, "certs"); 
+    char* name = findFile(vm, "certs", true); 
     if (!SSL_CTX_load_verify_locations(ctx, NULL, name)) {
         msapi_runtimeError(vm, "An Error Occured While Loading Certificates");
         return NULL;
@@ -129,7 +127,7 @@ void _closeSocket(SSOCKET* ssocket) {
 }
 
 
-bool newSocket(VM* vm, int argCount, bool shouldReturn) {
+bool newSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 2) {
         msapi_runtimeError(vm, "Too less arguments, expected 2, got %d", argCount);
         return false;
@@ -154,7 +152,7 @@ bool newSocket(VM* vm, int argCount, bool shouldReturn) {
         return false;
     }
 
-    ObjWebSSocket* s = allocateWebSSocket(vm, ssocket);
+    ObjSSocket* s = allocateSSocket(vm, ssocket);
     
     msapi_popn(vm, argCount + 1);
     
@@ -165,7 +163,7 @@ bool newSocket(VM* vm, int argCount, bool shouldReturn) {
     return true;
 }
 
-bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
+bool closeSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 1) {
         msapi_runtimeError(vm, "Too less arguments, expected 1, got 0");
         return false;
@@ -173,12 +171,12 @@ bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value socket = msapi_getArg(vm, 1, argCount);
 
-    if (!CHECK_WEB_SSOCKET(socket)) {
+    if (!CHECK_SSOCKET(socket)) {
         msapi_runtimeError(vm, "Expected a secure websocket object");
         return false;
     }
 
-    ObjWebSSocket* ssocket = AS_WEB_SSOCKET(socket);
+    ObjSSocket* ssocket = AS_SSOCKET(socket);
 
     if (ssocket->closed) {
         printf("Warning : Socket already closed\n");
@@ -198,7 +196,7 @@ bool closeSocket(VM* vm, int argCount, bool shouldReturn) {
     return true;
 }
 
-bool readSocket(VM* vm, int argCount, bool shouldReturn) {
+bool readSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 1) {
         msapi_runtimeError(vm, "Too less arguments, expected 1, got 0");
         return false;
@@ -206,12 +204,12 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
 
     Value socket = msapi_getArg(vm, 1, argCount);
 
-    if (!CHECK_WEB_SSOCKET(socket)) {
+    if (!CHECK_SSOCKET(socket)) {
         msapi_runtimeError(vm, "Expected a secure web socket object");
         return false;
     }
 
-    ObjWebSSocket* ssocket = AS_WEB_SSOCKET(socket);
+    ObjSSocket* ssocket = AS_SSOCKET(socket);
     
     if (ssocket->closed) {
         msapi_runtimeError(vm, "Attempt to read from a closed socket");
@@ -238,7 +236,7 @@ bool readSocket(VM* vm, int argCount, bool shouldReturn) {
     return true;
 }
 
-bool writeSocket(VM* vm, int argCount, bool shouldReturn) {
+bool writeSocket(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     if (argCount < 2) {
         msapi_runtimeError(vm, "Too less arguments, expected 2, got %d", argCount);
         return false;
@@ -247,7 +245,7 @@ bool writeSocket(VM* vm, int argCount, bool shouldReturn) {
     Value socket = msapi_getArg(vm, 1, argCount);
     Value str = msapi_getArg(vm, 2, argCount);
 
-    if (!CHECK_WEB_SSOCKET(socket)) {
+    if (!CHECK_SSOCKET(socket)) {
         msapi_runtimeError(vm, "Expected secure web socket object");
         return false;
     }
@@ -257,7 +255,7 @@ bool writeSocket(VM* vm, int argCount, bool shouldReturn) {
         return false;
     }
 
-    ObjWebSSocket* ssocket = AS_WEB_SSOCKET(socket);
+    ObjSSocket* ssocket = AS_SSOCKET(socket);
     ObjString* data = AS_STRING(str);
     
     if (ssocket->closed) {

@@ -16,8 +16,11 @@ static void statement(Scanner* scanner, Parser* parser);
 static void expression(Scanner* scanner, Parser* parser);
 static void and(Scanner* scanner, Parser* parser);
 static void or(Scanner* scanner, Parser* parser);
+static void bitwiseOr(Scanner* scanner, Parser* parser);
+static void bitwiseAnd(Scanner* scanner, Parser* parser);
 static void equality(Scanner* scanner, Parser* parser);
 static void comparison(Scanner* scanner, Parser* parser);
+static void bitshift(Scanner* scanner, Parser* parser);
 static void term(Scanner* scanner, Parser* parser);
 static void factor(Scanner* scanner, Parser* parser);
 static void highestBinary(Scanner* scanner, Parser* parser);
@@ -285,13 +288,32 @@ static void or(Scanner* scanner, Parser* parser) {
 }
 
 static void and(Scanner* scanner, Parser* parser) {
-    equality(scanner, parser); 
+    bitwiseOr(scanner, parser); 
 
     while (parser->current.type == TOKEN_AND) {
         advance(scanner, parser);
         int jumpIndex = emitJump(parser, OP_JMP_AND);
-        equality(scanner, parser);
+        bitwiseOr(scanner, parser);
         patch(parser, jumpIndex);
+    }
+}
+
+static void bitwiseOr(Scanner* scanner, Parser* parser) {
+    bitwiseAnd(scanner, parser);
+
+    while (match(scanner, parser, TOKEN_BIT_OR)) {
+        /* Right operand */ 
+        bitwiseAnd(scanner, parser);
+        emitByte(parser, OP_BIT_OR);
+    }
+}
+
+static void bitwiseAnd(Scanner* scanner, Parser* parser) {
+    equality(scanner, parser);
+
+    while (match(scanner, parser, TOKEN_BIT_AND)) {
+        equality(scanner, parser);
+        emitByte(parser, OP_BIT_AND);
     }
 }
 
@@ -322,7 +344,7 @@ static void equality(Scanner* scanner, Parser* parser) {
 
 static void comparison(Scanner* scanner, Parser* parser) {
     /* Parse the left operand */ 
-    term(scanner, parser);
+    bitshift(scanner, parser);
 
     while (match(scanner, parser, TOKEN_GREATER) ||
            match(scanner, parser, TOKEN_GREATER_EQUAL) ||
@@ -331,7 +353,7 @@ static void comparison(Scanner* scanner, Parser* parser) {
 
         TokenTyp type = parser->previous.type;
         /* Parse the right operand */
-        term(scanner, parser);
+        bitshift(scanner, parser);
 
         switch (type) {
             case TOKEN_GREATER:
@@ -351,6 +373,29 @@ static void comparison(Scanner* scanner, Parser* parser) {
     }
 
     // checkBadExpression(scanner, parser);
+}
+
+static void bitshift(Scanner* scanner, Parser* parser) {
+    /* Parse the left operand */
+    term(scanner, parser);
+    
+    while (match(scanner, parser, TOKEN_SHIFTL) ||
+           match(scanner, parser, TOKEN_SHIFTR)) {
+        TokenTyp type = parser->previous.type;
+
+        /* Parse the right operand */ 
+        term(scanner, parser);
+
+        switch (type) {
+            case TOKEN_SHIFTL:
+                emitByte(parser, OP_SHIFTL);
+                break;
+            case TOKEN_SHIFTR:
+                emitByte(parser, OP_SHIFTR);
+                break;
+            default: break;
+        }
+    }
 }
 
 static void term(Scanner* scanner, Parser* parser) {
