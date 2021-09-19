@@ -1,0 +1,78 @@
+import "lib/coroutine"
+
+var currentEventLoop = nil
+
+func arrayRemove(a, elem):
+    for i, v in a: if v == elem: a[i] = nil break end end
+end
+
+func arrayInsert(a, elem):
+    for i, v in a: if v == nil: a[i] = elem return end end
+    a.insert(elem)
+end
+
+class Task:
+    func _init(function):
+        self.coroutine = coroutine.create(function)
+        self.running = false
+        self.resumeAt = -1
+    end
+end
+
+class EventLoop:
+    // Fields containing data about the process and tasks
+    current_task = nil
+    pending_tasks = []
+    breakLoop = false
+
+    func schedule_task(task):
+        arrayInsert(self.pending_tasks, Task(task))
+    end
+
+    func run_forever():
+        while true:
+            for _, task in self.pending_tasks:
+                if task != nil and (task.resumeAt == -1 or clock() >= task.resumeAt):
+                    self.current_task = task
+                    task.running = true
+                    arrayRemove(self.pending_tasks, task)
+                    var duration = coroutine.resume(task.coroutine)
+                    
+                    // after the task has ended or has been yielded
+                    if coroutine.state(task.coroutine) != coroutine.DEAD:
+                        // it has been yielded
+                        task.running = false
+                        task.resumeAt = duration
+
+                        arrayInsert(self.pending_tasks, task)
+                    end
+                    self.current_task = nil
+                end
+            end
+
+            if self.breakLoop: self.breakLoop = false return end
+        end
+    end
+end
+
+global func get_event_loop():
+    if !currentEventLoop: currentEventLoop = EventLoop() end
+    return currentEventLoop
+end
+
+global func sleep(duration):
+    if type(duration) != "number": 
+        print("Expected a number for sleep duration")
+    end
+
+    coroutine.yield(clock() + duration)
+end
+
+global func stop_event_loop():
+    if !currentEventLoop: 
+        print("No event loop available")
+        return
+    end
+
+    currentEventLoop.breakLoop = true
+end

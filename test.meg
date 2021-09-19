@@ -1,0 +1,17 @@
+import "lib/scheduler"
+
+func task1():
+    print(1)
+    scheduler.sleep(2)
+    print(2)
+    scheduler.stop_event_loop()
+end
+
+func task2():
+    print(3)
+end
+
+var loop = scheduler.get_event_loop()
+loop.schedule_task(task1)
+loop.schedule_task(task2)
+loop.run_forever()

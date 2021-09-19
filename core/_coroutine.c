@@ -13,19 +13,17 @@ static ObjUpvalue* unplugUpvalues(VM* vm, Value* slot) {
     ObjUpvalue* first = NULL;
     ObjUpvalue* previous = NULL;
 
-    if (vm->UpvalueHead->value < slot) {
+    if (vm->UpvalueHead == NULL || vm->UpvalueHead->value < slot) {
         /* If the latest (or the first in order) is before the slot specified, 
          * we dont have any upvalues to handle */
         return NULL;
     }
 
     first = vm->UpvalueHead;
-    
     while (vm->UpvalueHead != NULL && (vm->UpvalueHead->value >= slot)) {
         previous = vm->UpvalueHead;
         vm->UpvalueHead = vm->UpvalueHead->next; 
-    }
-    
+    } 
     previous->next = NULL;
 
     return first;
@@ -210,13 +208,14 @@ bool yield(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     CallFrame* frameStorage = reallocate(vm, NULL, 0, sizeof(CallFrame) * saveCount);
     Value* stack = reallocate(vm, NULL, 0, sizeof(Value) * stackSize);
     msapi_pop(vm);
-
+    
     /* Copy the callframes and the stack */    
     memcpy(frameStorage, lastCoroutine, sizeof(CallFrame) * saveCount);
     memcpy(stack, lastCoroutine->slotPtr, sizeof(Value) * stackSize);
     /* Unplug the upvalues from the upvalue array */
+
     ObjUpvalue* unpluggedUpvalues = unplugUpvalues(vm, &lastCoroutine->slotPtr[0]);
-    
+ 
     /* Re-adjust the duplicate callframe slot pointers to point to the duplicate stack */
     for (int i = 0; i < saveCount; i++) {
         CallFrame* dupFrame = &frameStorage[i];
@@ -251,7 +250,6 @@ bool yield(VM* vm, Obj* self, int argCount, bool shouldReturn) {
     
     /* We save the yield function's should return state, which can be used by resume */
     coroutine->shouldReturn = shouldReturn;
-
     return true;
 }
 
