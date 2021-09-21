@@ -461,7 +461,7 @@ void freeObject(VM* vm, Obj* obj) {
             if (coro->stack != NULL) {
                 reallocate(vm, coro->stack, sizeof(Value) * coro->stackSize, 0);
             }
-            
+             
             reallocate(vm, coro, sizeof(ObjCoroutine), 0);
             break;
         }

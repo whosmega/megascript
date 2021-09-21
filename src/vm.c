@@ -910,6 +910,24 @@ static InterpretResult run(VM* vm) {
             case OP_ZERO: push(vm, NATIVE_TO_NUMBER(0)); break; 
             case OP_MIN1: push(vm, NATIVE_TO_NUMBER(-1)); break;
             case OP_PLUS1: push(vm, NATIVE_TO_NUMBER(1)); break;
+            case OP_UNPACK: {
+                /* Unpacks an array into freely suspended values */
+                uint8_t expectedCount = AS_NUMBER(READ_CONSTANT(frame));
+                Value arrayValue = pop(vm);
+
+                if (!CHECK_ARRAY(arrayValue)) {
+                    msapi_runtimeError(vm, "Expected an array to unpack");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjArray* array = AS_ARRAY(arrayValue);
+                int arrayCount = array->array.count;
+
+                for (int i = 0; i < arrayCount && i < expectedCount; i++) {
+                    Value v = array->array.values[i];
+                    push(vm, v);
+                }
+            }
             case OP_BIT_AND: {
                 Value rightOp = pop(vm);
                 Value leftOp = pop(vm);
