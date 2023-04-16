@@ -8,7 +8,7 @@ This is the print function, it prints all the arguments given to it to the `stdo
 2. `str(value) -> string`
 This function takes a single argument of any datatype, converts it to a suitable string and returns it.
 ```
-print(str("12"))  
+print(str(12))  
 ```
 
 3. `num(string) -> number | nil`
