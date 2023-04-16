@@ -33,6 +33,8 @@ var value = test      // value = nil
 func foo():
   global test = 100
 end
+
+foo()
 var value = test      // value = 100
 ```
 Functions can have parameters, which get set to the arguments which are passed when calling
